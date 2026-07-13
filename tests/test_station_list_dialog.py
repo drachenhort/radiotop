@@ -15,6 +15,7 @@ class _StubMainWindow:
     def __init__(self, stations=None):
         self.stations = stations if stations is not None else []
         self.current_idx = None
+        self._current_icy_name = None
         self.play_index_calls = []
         self.save_calls = 0
         self.rebuild_menu_calls = 0
@@ -189,6 +190,56 @@ def test_edit_station_keeps_icy_adopted_name_over_stale_prefill(qapp, monkeypatc
     dlg._edit_station()
 
     assert main.stations[0]["name"] == "Icy Adopted Name"
+
+
+def test_edit_station_prefills_with_live_icy_name_for_playing_station(qapp, monkeypatch):
+    # A station with a user-typed name never gets that name auto-adopted
+    # from the stream (see test_icy_station_name.py), but the Edit dialog
+    # should still offer the real broadcast name as the pre-filled value so
+    # accepting it unchanged saves the station under its actual name.
+    captured_prefill = []
+
+    def fake_exec(self):
+        captured_prefill.append(self.name_edit.text())
+        return QDialog.DialogCode.Accepted  # accepted unchanged
+
+    monkeypatch.setattr(EditStationDialog, "exec", fake_exec)
+
+    main = _StubMainWindow([_station("My Favorite Station", "http://old.example.com:7700/stream.mp3")])
+    main.current_idx = 0
+    main._current_icy_name = "Real Icecast Broadcast Name"
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(0)
+    dlg._edit_station()
+
+    assert captured_prefill == ["Real Icecast Broadcast Name"]
+    assert main.stations[0]["name"] == "Real Icecast Broadcast Name"
+
+
+def test_edit_station_does_not_prefill_icy_name_for_a_different_station(qapp, monkeypatch):
+    # The live icy-name only applies to the currently *playing* station -
+    # editing some other station in the list must still show its own
+    # stored name, not the currently-playing station's icy-name.
+    captured_prefill = []
+
+    def fake_exec(self):
+        captured_prefill.append(self.name_edit.text())
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(EditStationDialog, "exec", fake_exec)
+
+    main = _StubMainWindow([
+        _station("Playing Station", "http://playing.example.com:7700/stream.mp3"),
+        _station("Other Station", "http://other.example.com:7700/stream.mp3"),
+    ])
+    main.current_idx = 0
+    main._current_icy_name = "Real Icecast Broadcast Name"
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(1)
+    dlg._edit_station()
+
+    assert captured_prefill == ["Other Station"]
+    assert main.stations[1]["name"] == "Other Station"
 
 
 def test_edit_station_applies_user_rename_even_if_matches_old_guess(qapp, monkeypatch):

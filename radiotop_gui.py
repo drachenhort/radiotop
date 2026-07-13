@@ -1113,7 +1113,14 @@ class StationListDialog(QDialog):
             return
         station = self.main.stations[idx]
         original_name = station["name"]
-        dlg = EditStationDialog(original_name, station["url"], self)
+        prefill_name = original_name
+        if idx == self.main.current_idx and self.main._current_icy_name:
+            # Show the stream's own live icy-name rather than the stored
+            # name (which may be one the user typed in and that
+            # _on_icy_station_name therefore never overwrote) - accepting
+            # the dialog unchanged then saves it as the station's name.
+            prefill_name = self.main._current_icy_name
+        dlg = EditStationDialog(prefill_name, station["url"], self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         name, url = dlg.values()
@@ -1123,7 +1130,7 @@ class StationListDialog(QDialog):
         url, was_adjusted = _normalize_station_url(url)
         if not name:
             name = self.main._guess_name(url)
-        elif name == original_name and station["name"] != original_name:
+        elif name == prefill_name and station["name"] != original_name:
             # The background icy-name lookup (_on_icy_station_name) adopted a
             # freshly-discovered name into the station while this dialog was
             # open - don't clobber it with the stale pre-filled value the
