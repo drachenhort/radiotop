@@ -24,6 +24,12 @@ on:
   release:
     types: [published]
 
+# The default GITHUB_TOKEN is read-only for Releases unless a workflow
+# explicitly asks for write access here - without this, the "Attach to
+# GitHub Release" step fails with "Resource not accessible by integration".
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
