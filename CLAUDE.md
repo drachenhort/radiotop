@@ -19,8 +19,36 @@ python3 radiotop_gui.py
 Linux additionally needs a Qt6 multimedia backend for playback to work (FFmpeg or GStreamer plugins,
 e.g. `qt6-multimedia-plugins`). Windows needs nothing extra (uses Media Foundation).
 
-There are no automated tests, no lint/format tooling, and no CI checks that run on every push — the
-only CI job is the Windows `.exe` build (see below). Verify changes by actually running the app.
+There's no lint/format tooling and no CI checks that run on every push — the only CI job is the
+Windows `.exe` build (see below). For anything not covered by the test suite, verify by actually
+running the app.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt   # pytest, pytest-qt
+pytest
+```
+
+Tests run against `QT_QPA_PLATFORM=offscreen` (set automatically by `tests/conftest.py`), so no
+display is required — CI/headless-safe. `pytest.ini` pins `qt_api = pyside6` for pytest-qt.
+
+Tests avoid instantiating the real `MainWindow` (it starts a live local stream proxy server, system
+tray icon, and audio output — heavyweight and not what most logic tests need). Instead
+`tests/conftest.py`'s `MainWindowStub` is a minimal real `QObject` carrying just the attributes a
+given `MainWindow` method touches; unbound methods are called directly against it, e.g.
+`rt.MainWindow._guess_name(stub, url)`. This works because Shiboken only requires `self` to be a
+properly `__init__`-ed `QObject` when the method parents a `QAction`/`QMenu` to it — a plain
+`MainWindow.__new__(MainWindow)` bypass does *not* satisfy that and raises
+`RuntimeError: __init__ method of object's base class not called`.
+
+Modal dialogs (`QMessageBox.warning/information`, `EditStationDialog.exec()`) are monkeypatched in
+tests that exercise the code paths triggering them, since a real `.exec()` call would block
+indefinitely waiting for interactive input.
+
+For QThread subclasses (`TrackLookupThread` etc.), tests call `.run()` directly rather than
+`.start()`, to execute the work synchronously on the test thread instead of racing a background
+thread — with `urllib.request.urlopen` monkeypatched so nothing hits the network.
 
 ## Building the Windows executable
 

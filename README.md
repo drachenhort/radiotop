@@ -94,6 +94,15 @@ RadioTop stores your custom stations, volume, output device, notification prefer
 - **No genre / year / album found** — lookup depends on the track being in the MusicBrainz database and the station sending a clean `Artist - Title` string.
 - **Firewall prompt on first run (Windows)** — RadioTop opens a small local-only proxy server on `127.0.0.1` to set a proper User-Agent when fetching streams; it's safe to allow.
 
+## Running tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Tests run headless (`QT_QPA_PLATFORM=offscreen`, set automatically), so no display is required.
+
 ## Project layout
 
 ```
@@ -104,6 +113,8 @@ assets/
 radiotop.spec          # PyInstaller build spec for a standalone Windows .exe
 install_windows.ps1    # automated Windows 10/11 install/uninstall script
 INSTALL_WINDOWS.md      # detailed Windows install guide
+tests/                 # pytest test suite (run headless, see "Running tests")
+requirements-dev.txt   # test-only dependencies (pytest, pytest-qt)
 ```
 
 ## License
