@@ -134,7 +134,7 @@ def test_update_status_appends_station_name_when_playing(main_window_stub):
     main_window_stub.current_idx = 0
     _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
     rt.MainWindow._update_status(main_window_stub)
-    assert main_window_stub.status_label.text_value == "Playing - Cool FM"
+    assert main_window_stub.status_label.text_value == "Playing on - Cool FM"
 
 
 def test_update_status_plain_playing_when_nothing_selected(main_window_stub):
@@ -169,4 +169,4 @@ def test_update_status_prefers_live_icy_name_over_stored_name(main_window_stub):
     main_window_stub._current_icy_name = "Actual Broadcast Name"
     _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
     rt.MainWindow._update_status(main_window_stub)
-    assert main_window_stub.status_label.text_value == "Playing - Actual Broadcast Name"
+    assert main_window_stub.status_label.text_value == "Playing on - Actual Broadcast Name"

@@ -1538,7 +1538,7 @@ class MainWindow(QMainWindow):
 
     def _on_icy_station_name(self, icy_name):
         """Records the station's own broadcast name (from the icy-name
-        response header) so the "Playing - <name>" status always reflects
+        response header) so the "Playing on - <name>" status always reflects
         the stream's actual reported name - and separately, adopts it in
         place of the station's stored name if that name is still just the
         placeholder guessed from the URL's hostname when the station was
@@ -1993,7 +1993,7 @@ class MainWindow(QMainWindow):
             # name, which may be a name the user typed in and that
             # _on_icy_station_name therefore left untouched.
             display_name = self._current_icy_name or self.stations[self.current_idx]["name"]
-            text = f"Playing - {display_name}"
+            text = f"Playing on - {display_name}"
 
         self.status_label.setText(text)
         self.status_label.setStyleSheet(f"color: {STATUS_COLORS.get(status, '#888888')};")
