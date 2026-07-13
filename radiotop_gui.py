@@ -40,7 +40,7 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 from PySide6.QtCore import Qt, QUrl, Signal, QThread, QTimer
 from PySide6.QtGui import QAction, QFont, QIcon, QPixmap
@@ -86,6 +86,50 @@ STATUS_COLORS = {
 TITLE_RE = re.compile(rb"StreamTitle='([^']*)';")
 
 RADIOTOP_USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
+
+# Many Shoutcast/Icecast stations only respond correctly if the stream
+# address includes an explicit port and a mountpoint/filename - a bare
+# "http://host/" often just hangs or errors. Port 7700 is the standard
+# port for SUB/Wave Radios stations; used here by _normalize_station_url()
+# below to fill in whichever piece a user-entered address is missing.
+DEFAULT_STREAM_PORT = 7700
+DEFAULT_STREAM_FILENAME = "stream.mp3"
+
+
+def _normalize_station_url(url):
+    """If a station URL is missing a port and/or doesn't reference
+    "stream.mp3" anywhere, fill in the default for whichever piece is
+    missing (port 7700 - the standard port for SUB/Wave Radios stations -
+    and/or the "stream.mp3" filename), since an address lacking both
+    often fails to connect. Each piece is checked independently - a URL
+    with a port but no filename only gets the filename added, and vice
+    versa.
+
+    Returns (possibly-adjusted url, was_adjusted)."""
+    parsed = urlparse(url)
+    adjusted = False
+
+    netloc = parsed.netloc
+    if parsed.port is None:
+        userinfo = ""
+        if parsed.username:
+            userinfo = parsed.username
+            if parsed.password:
+                userinfo += f":{parsed.password}"
+            userinfo += "@"
+        netloc = f"{userinfo}{parsed.hostname or ''}:{DEFAULT_STREAM_PORT}"
+        adjusted = True
+
+    path = parsed.path
+    if DEFAULT_STREAM_FILENAME not in path.lower():
+        path = path.rstrip("/") + f"/{DEFAULT_STREAM_FILENAME}"
+        adjusted = True
+
+    if not adjusted:
+        return url, False
+
+    new_url = urlunparse((parsed.scheme, netloc, path, parsed.params, parsed.query, parsed.fragment))
+    return new_url, True
 
 
 def _resource_path(*parts):
@@ -1056,6 +1100,7 @@ class StationListDialog(QDialog):
         if not url or not (url.startswith("http://") or url.startswith("https://")):
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid http:// or https:// stream URL.")
             return
+        url, was_adjusted = _normalize_station_url(url)
         if not name:
             name = self.main._guess_name(url)
 
@@ -1073,6 +1118,9 @@ class StationListDialog(QDialog):
             else:
                 self.main.name_label.setText(name)
 
+        if was_adjusted:
+            self._notify_url_adjusted(url)
+
     def _add_station(self):
         url = self.url_edit.text().strip()
         if not url:
@@ -1080,6 +1128,7 @@ class StationListDialog(QDialog):
         if not (url.startswith("http://") or url.startswith("https://")):
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid http:// or https:// stream URL.")
             return
+        url, was_adjusted = _normalize_station_url(url)
         name = self.name_edit.text().strip() or self.main._guess_name(url)
         station = {"name": name, "url": url, "custom": True}
         self.main.stations.append(station)
@@ -1091,6 +1140,21 @@ class StationListDialog(QDialog):
         self.name_edit.clear()
         self.url_edit.clear()
         self.close()
+        if was_adjusted:
+            self._notify_url_adjusted(url)
+
+    def _notify_url_adjusted(self, adjusted_url):
+        QMessageBox.information(
+            self,
+            "Stream address adjusted",
+            "This address didn't include a port and/or \"stream.mp3\", which most "
+            f"stream servers need to connect properly - RadioTop filled in the "
+            f"default(s) for whichever was missing (port {DEFAULT_STREAM_PORT}, "
+            "the standard port for SUB/Wave Radios stations, and/or "
+            f"\"{DEFAULT_STREAM_FILENAME}\"):\n\n{adjusted_url}\n\n"
+            "If the station still doesn't play, edit it and enter the exact "
+            "stream address your station provides instead.",
+        )
 
     def _remove_station(self):
         idx = self._selected_station_idx()
