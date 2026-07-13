@@ -86,7 +86,9 @@ Then right-click the new shortcut → **Properties → Change Icon...** and poin
 
 ## Building the `.exe` (optional)
 
-If you want a standalone executable (for method A, or just to run RadioTop without keeping Python installed):
+**Don't have a Windows machine?** The repo includes a GitHub Actions workflow (`.github/workflows/build-windows.yml`) that builds `RadioTop.exe` on GitHub's own Windows runners — no local Windows needed. Go to the repo's **Actions** tab → **Build Windows executable** → **Run workflow**, then download the `RadioTop-windows` artifact once it finishes (a couple of minutes). It also runs automatically on every push that touches the app code, and attaches the `.exe` to any GitHub Release you publish.
+
+**Building it yourself locally instead:**
 
 ```powershell
 cd radiotop
