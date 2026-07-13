@@ -1073,8 +1073,14 @@ class StationListDialog(QDialog):
 
     def _update_button_states(self, *_):
         idx = self._selected_station_idx()
-        self.edit_btn.setEnabled(idx is not None)
-        enabled = idx is not None and self.main.stations[idx].get("custom", False)
+        # While refresh_list() is mid-rebuild, list_widget.clear() can
+        # transiently re-fire currentItemChanged with a row still carrying a
+        # UserRole index from the pre-mutation station list (e.g. right
+        # after a station is removed) - guard against that stale index
+        # briefly pointing past the end of the now-shorter station list.
+        valid = idx is not None and 0 <= idx < len(self.main.stations)
+        self.edit_btn.setEnabled(valid)
+        enabled = valid and self.main.stations[idx].get("custom", False)
         self.remove_btn.setEnabled(enabled)
 
     def _select_row_for_station(self, idx):
