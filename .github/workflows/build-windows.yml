@@ -28,11 +28,16 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
+      # actions/checkout@v6, actions/setup-python@v6, actions/upload-artifact@v6,
+      # and softprops/action-gh-release@v3 are the first major versions of each
+      # action built on the Node 24 runtime (GitHub deprecated Node 20 for
+      # Actions in 2026). Using anything older triggers a
+      # "Node.js 20 is deprecated" warning on every run.
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -45,7 +50,7 @@ jobs:
         run: pyinstaller radiotop.spec
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: RadioTop-windows
           path: dist/RadioTop.exe
@@ -53,6 +58,6 @@ jobs:
 
       - name: Attach to GitHub Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/RadioTop.exe
