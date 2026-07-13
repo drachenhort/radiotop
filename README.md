@@ -65,7 +65,7 @@ chmod +x radiotop_gui.py
 ./radiotop_gui.py
 ```
 
-Click **Stations...** to open the station list, where you can search existing stations or paste a stream URL to add and play a new one. Closing the main window minimizes RadioTop to the system tray — use the tray menu or **File → Quit** to actually exit.
+Use the **Stations** menu to pick a station to play, or choose **Manage Stations...** to search existing stations, edit them, or paste a stream URL to add and play a new one. Closing the main window minimizes RadioTop to the system tray — use the tray menu or **File → Quit** to actually exit.
 
 ## Optional API keys
 

@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 from PySide6.QtCore import Qt, QUrl, Signal, QThread, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon, QPixmap
+from PySide6.QtGui import QAction, QActionGroup, QFont, QIcon, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
@@ -1111,6 +1111,7 @@ class StationListDialog(QDialog):
             self.main._save_custom_stations()
         self.refresh_list()
         self._select_row_for_station(idx)
+        self.main._rebuild_stations_menu()
 
         if idx == self.main.current_idx:
             if url_changed and self.main.player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
@@ -1170,6 +1171,7 @@ class StationListDialog(QDialog):
         del self.main.stations[idx]
         self.main._save_custom_stations()
         self.refresh_list()
+        self.main._rebuild_stations_menu()
 
 
 class MainWindow(QMainWindow):
@@ -1224,14 +1226,6 @@ class MainWindow(QMainWindow):
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-
-        stations_row = QHBoxLayout()
-        stations_row.addStretch(1)
-        self.stations_btn = QPushButton("Stations...")
-        self.stations_btn.clicked.connect(self._show_station_list_dialog)
-        stations_row.addWidget(self.stations_btn)
-        stations_row.addStretch(1)
-        root.addLayout(stations_row)
 
         right = root  # kept as an alias since the rest of this method was written against `right`
 
@@ -1387,6 +1381,9 @@ class MainWindow(QMainWindow):
         track_info_action.triggered.connect(self._show_track_info_dialog)
         view_menu.addAction(track_info_action)
 
+        self.stations_menu = self.menuBar().addMenu("&Stations")
+        self._rebuild_stations_menu()
+
         settings_menu = self.menuBar().addMenu("&Settings")
         lastfm_action = QAction("&Last.fm API Key...", self)
         lastfm_action.triggered.connect(self._configure_lastfm_key)
@@ -1404,6 +1401,30 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(self.notifications_action)
 
         self.setStatusBar(QStatusBar())
+
+    def _rebuild_stations_menu(self):
+        """Repopulates the &Stations menu bar entry: one checkable action per
+        station (checked = currently playing, click = play it), followed by
+        a Manage Stations... action that opens the full search/add/edit
+        dialog. Called on every structural change (add/edit/remove) and
+        whenever the playing station changes, since a rebuild is cheap for
+        the handful of stations this app deals with."""
+        self.stations_menu.clear()
+        self._stations_action_group = QActionGroup(self)
+        self._stations_action_group.setExclusive(True)
+        for idx, station in enumerate(self.stations):
+            action = QAction(station["name"], self)
+            action.setCheckable(True)
+            action.setChecked(idx == self.current_idx)
+            action.triggered.connect(lambda checked=False, i=idx: self.play_index(i))
+            self._stations_action_group.addAction(action)
+            self.stations_menu.addAction(action)
+
+        if self.stations:
+            self.stations_menu.addSeparator()
+        manage_action = QAction("&Manage Stations...", self)
+        manage_action.triggered.connect(self._show_station_list_dialog)
+        self.stations_menu.addAction(manage_action)
 
     def _build_tray(self):
         icon = _app_icon()
@@ -1461,6 +1482,7 @@ class MainWindow(QMainWindow):
         self._set_album_art_placeholder("Waiting for track info...")
         self.statusBar().showMessage(f"Connecting to {station['name']}...", 4000)
         self.station_dialog.refresh_list()
+        self._rebuild_stations_menu()
         self._start_metadata_thread(station["url"])
 
     def _start_metadata_thread(self, url):
@@ -1882,6 +1904,7 @@ class MainWindow(QMainWindow):
         self.track_label.setText("")
         self.track_info_dialog.set_no_track()
         self.station_dialog.refresh_list()
+        self._rebuild_stations_menu()
 
     # ------------------------------------------------------- status/errors
     def _update_status(self, *_):
