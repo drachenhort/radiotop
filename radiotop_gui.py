@@ -22,8 +22,9 @@ Notes:
   (e.g. `qt6-multimedia-plugins`, or GStreamer's `good`/`bad` plugin sets).
 - Track title comes from the stream's ICY metadata. Genre, year, and album
   are then looked up via the MusicBrainz API (the open metadata database
-  ListenBrainz is built on) - matching depends on the track being in that
-  database and the station sending a clean "Artist - Title" string.
+  ListenBrainz is built on), with the iTunes Search API as a no-key fallback
+  - matching depends on the track being findable in one of those and the
+  station sending a clean "Artist - Title" string.
 - Custom stations you add are remembered between runs (via QSettings,
   which uses an INI-style config file on Linux and the Registry on
   Windows).
@@ -375,6 +376,7 @@ class TrackLookupThread(QThread):
 
     MB_USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
     LASTFM_ENDPOINT = "https://ws.audioscrobbler.com/2.0/"
+    ITUNES_ENDPOINT = "https://itunes.apple.com/search"
 
     def __init__(self, raw_title, lastfm_api_key=""):
         super().__init__()
@@ -482,6 +484,44 @@ class TrackLookupThread(QThread):
         album = (track.get("album") or {}).get("title", "")
         return {"genre": genre, "album": album}, None
 
+    def _query_itunes(self, artist, title):
+        term = f"{artist} {title}".strip() if artist else title
+        url = self.ITUNES_ENDPOINT + "?" + urlencode({
+            "term": term,
+            "media": "music",
+            "entity": "song",
+            "limit": 1,
+        })
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+
+        results = data.get("results") or []
+        if not results:
+            return None
+
+        track = results[0]
+        release_date = track.get("releaseDate", "")
+        year = release_date[:4] if len(release_date) >= 4 and release_date[:4].isdigit() else ""
+
+        # iTunes artwork URLs point at a small thumbnail by default (e.g.
+        # ".../100x100bb.jpg") - request a larger size instead.
+        artwork_url = track.get("artworkUrl100", "")
+        if artwork_url:
+            artwork_url = artwork_url.replace("100x100bb", "600x600bb")
+
+        return {
+            "artist": track.get("artistName", "") or artist,
+            "title": track.get("trackName", "") or title,
+            "album": track.get("collectionName", ""),
+            "genre": track.get("primaryGenreName", ""),
+            "year": year,
+            "artwork_url": artwork_url,
+        }
+
     def run(self):
         artist, title = self._split_artist_title(self.raw_title)
         if not title:
@@ -490,8 +530,9 @@ class TrackLookupThread(QThread):
 
         mb = self._query_musicbrainz(artist, title)
         lfm, lfm_error = self._query_lastfm(artist, title)
+        itunes = self._query_itunes(artist, title)
 
-        if mb is None and lfm is None:
+        if mb is None and lfm is None and itunes is None:
             self.result_ready.emit({
                 "raw_title": self.raw_title,
                 "found": False,
@@ -504,20 +545,32 @@ class TrackLookupThread(QThread):
             sources.append("MusicBrainz")
         if lfm:
             sources.append("Last.fm")
+        if itunes:
+            sources.append("iTunes")
 
-        genre = (lfm.get("genre") if lfm else "") or (mb.get("genre") if mb else "")
-        album = (mb.get("album") if mb else "") or (lfm.get("album") if lfm else "")
+        genre = (
+            (lfm.get("genre") if lfm else "")
+            or (mb.get("genre") if mb else "")
+            or (itunes.get("genre") if itunes else "")
+        )
+        album = (
+            (mb.get("album") if mb else "")
+            or (lfm.get("album") if lfm else "")
+            or (itunes.get("album") if itunes else "")
+        )
+        year = (mb.get("year") if mb else "") or (itunes.get("year") if itunes else "")
 
         self.result_ready.emit({
             "raw_title": self.raw_title,
             "found": True,
-            "artist": (mb.get("artist") if mb else "") or artist,
-            "title": (mb.get("title") if mb else "") or title,
+            "artist": (mb.get("artist") if mb else "") or (itunes.get("artist") if itunes else "") or artist,
+            "title": (mb.get("title") if mb else "") or (itunes.get("title") if itunes else "") or title,
             "album": album,
             "genre": genre,
             "lastfm_error": lfm_error,
-            "year": (mb.get("year") if mb else "") or "",
+            "year": year,
             "release_mbid": (mb.get("release_mbid") if mb else "") or "",
+            "itunes_artwork_url": (itunes.get("artwork_url") if itunes else "") or "",
             "sources": sources,
         })
 
@@ -680,27 +733,47 @@ class ArtistImageThread(QThread):
 
 
 class AlbumArtThread(QThread):
-    """Fetches the album cover from the Cover Art Archive, keyed by the
-    MusicBrainz release ID (no key required). ID-based, so it's more
-    reliable than a name search - but only works when MusicBrainz found
-    a matching release with cover art on file."""
+    """Fetches the album cover, preferring the Cover Art Archive, keyed by
+    the MusicBrainz release ID (no key required) - ID-based, so it's more
+    reliable than a name search. Falls back to the artwork URL returned by
+    an iTunes Search API track match when either MusicBrainz found no
+    release or the Cover Art Archive has no cover on file for it."""
 
     image_ready = Signal(bytes)
     not_found = Signal()
 
     USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
 
-    def __init__(self, release_mbid):
+    def __init__(self, release_mbid, itunes_artwork_url=""):
         super().__init__()
         self.release_mbid = release_mbid
+        self.itunes_artwork_url = itunes_artwork_url
 
-    def run(self):
+    def _fetch_from_cover_art_archive(self):
         url = f"https://coverartarchive.org/release/{self.release_mbid}/front-500"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
             resp = urllib.request.urlopen(req, timeout=10)
-            image_bytes = resp.read()
+            return resp.read()
         except Exception:
+            return None
+
+    def _fetch_from_itunes(self):
+        try:
+            req = urllib.request.Request(self.itunes_artwork_url, headers={"User-Agent": self.USER_AGENT})
+            resp = urllib.request.urlopen(req, timeout=10)
+            return resp.read()
+        except Exception:
+            return None
+
+    def run(self):
+        image_bytes = None
+        if self.release_mbid:
+            image_bytes = self._fetch_from_cover_art_archive()
+        if image_bytes is None and self.itunes_artwork_url:
+            image_bytes = self._fetch_from_itunes()
+
+        if image_bytes is None:
             self.not_found.emit()
             return
         self.image_ready.emit(image_bytes)
@@ -1227,7 +1300,7 @@ class MainWindow(QMainWindow):
         self.last_image_artist = None
         self.album_art_thread = None
         self.album_art_cache = {}
-        self.last_album_mbid = None
+        self.last_album_key = None
         self.lastfm_api_key = self.settings.value("lastfm_api_key", "") or ""
         self.discogs_token = self.settings.value("discogs_token", "") or ""
         self.notifications_enabled = self.settings.value("show_notifications", True, type=bool)
@@ -1512,7 +1585,7 @@ class MainWindow(QMainWindow):
         self.last_image_artist = None
         self._stop_artist_image_thread()
         self._set_artist_image_placeholder("Waiting for track info...")
-        self.last_album_mbid = None
+        self.last_album_key = None
         self._stop_album_art_thread()
         self._set_album_art_placeholder("Waiting for track info...")
         self.statusBar().showMessage(f"Connecting to {station['name']}...", 4000)
@@ -1666,8 +1739,9 @@ class MainWindow(QMainWindow):
         if confirmed_artist:
             self._fetch_artist_image(confirmed_artist)
         release_mbid = result.get("release_mbid")
-        if release_mbid:
-            self._fetch_album_art(release_mbid)
+        itunes_artwork_url = result.get("itunes_artwork_url")
+        if release_mbid or itunes_artwork_url:
+            self._fetch_album_art(release_mbid, itunes_artwork_url)
         elif result.get("found"):
             self._set_album_art_placeholder("No cover art")
 
@@ -1813,19 +1887,23 @@ class MainWindow(QMainWindow):
         self.album_art_label.setPixmap(scaled)
         self.album_art_label.setStyleSheet("border: 1px solid #555; border-radius: 4px; background: #222;")
 
-    def _fetch_album_art(self, release_mbid):
+    def _fetch_album_art(self, release_mbid, itunes_artwork_url=""):
         release_mbid = (release_mbid or "").strip()
-        if not release_mbid:
-            self.last_album_mbid = None
+        itunes_artwork_url = (itunes_artwork_url or "").strip()
+        # Cache/dedup key: prefer the MBID (stable, ID-based) and fall back
+        # to the iTunes artwork URL when no MusicBrainz release was matched.
+        cache_key = release_mbid or itunes_artwork_url
+        if not cache_key:
+            self.last_album_key = None
             self._stop_album_art_thread()
             self._set_album_art_placeholder("No image")
             return
-        if release_mbid == self.last_album_mbid:
+        if cache_key == self.last_album_key:
             return  # already showing / fetching this release
-        self.last_album_mbid = release_mbid
+        self.last_album_key = cache_key
 
-        if release_mbid in self.album_art_cache:
-            cached = self.album_art_cache[release_mbid]
+        if cache_key in self.album_art_cache:
+            cached = self.album_art_cache[cache_key]
             if cached is None:
                 self._set_album_art_placeholder("No cover art")
             else:
@@ -1839,21 +1917,21 @@ class MainWindow(QMainWindow):
 
         self._set_album_art_placeholder("Loading...")
         self._stop_album_art_thread()
-        self.album_art_thread = AlbumArtThread(release_mbid)
+        self.album_art_thread = AlbumArtThread(release_mbid, itunes_artwork_url)
         self.album_art_thread.image_ready.connect(
-            lambda data, mbid=release_mbid: self._on_album_art_ready(mbid, data)
+            lambda data, key=cache_key: self._on_album_art_ready(key, data)
         )
         self.album_art_thread.not_found.connect(
-            lambda mbid=release_mbid: self._on_album_art_not_found(mbid)
+            lambda key=cache_key: self._on_album_art_not_found(key)
         )
         self.album_art_thread.finished.connect(self._on_album_art_thread_finished)
         self.album_art_thread.finished.connect(self.album_art_thread.deleteLater)
         self.album_art_thread.start()
 
-    def _on_album_art_ready(self, release_mbid, data):
+    def _on_album_art_ready(self, cache_key, data):
         raw = bytes(data)
-        self.album_art_cache[release_mbid] = raw
-        if release_mbid != self.last_album_mbid:
+        self.album_art_cache[cache_key] = raw
+        if cache_key != self.last_album_key:
             return
         pixmap = QPixmap()
         pixmap.loadFromData(raw)
@@ -1862,9 +1940,9 @@ class MainWindow(QMainWindow):
         else:
             self._set_album_art_placeholder("No cover art")
 
-    def _on_album_art_not_found(self, release_mbid):
-        self.album_art_cache[release_mbid] = None
-        if release_mbid == self.last_album_mbid:
+    def _on_album_art_not_found(self, cache_key):
+        self.album_art_cache[cache_key] = None
+        if cache_key == self.last_album_key:
             self._set_album_art_placeholder("No cover art")
 
     def _on_album_art_thread_finished(self):
@@ -1959,7 +2037,7 @@ class MainWindow(QMainWindow):
         self.last_image_artist = None
         self._set_artist_image_placeholder("No image")
         self._stop_album_art_thread()
-        self.last_album_mbid = None
+        self.last_album_key = None
         self._set_album_art_placeholder("No image")
         self.name_label.setText("Nothing playing")
         self.track_label.setText("")

@@ -80,10 +80,14 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
     metadata block, then disconnects, rather than holding a second full-bitrate connection open (to
     avoid inflating the station's listener count / bandwidth).
   - `TrackLookupThread` — resolves genre/year/album for a track title via MusicBrainz (no key
-    needed), optionally overriding genre with Last.fm tags if a Last.fm API key is configured.
+    needed), optionally overriding genre with Last.fm tags if a Last.fm API key is configured, with
+    the iTunes Search API (also no key needed) queried as a fallback source for album/year/genre and
+    for an artwork URL used by `AlbumArtThread`.
   - `ArtistImageThread` — artist photo, tried in order: Discogs (if a token is configured) → Wikipedia
     → Last.fm.
-  - `AlbumArtThread` — cover art via the Cover Art Archive, keyed by MusicBrainz release ID.
+  - `AlbumArtThread` — cover art via the Cover Art Archive, keyed by MusicBrainz release ID, falling
+    back to the iTunes artwork URL (from `TrackLookupThread`) when MusicBrainz found no release or
+    the Cover Art Archive has no cover on file for it.
 - **Dialogs** (`QDialog` subclasses) — `TrackInfoDialog`, `LastfmSettingsDialog` /
   `DiscogsSettingsDialog` (each with a "Test" button that validates the key/token before saving),
   `EditStationDialog`, `StationListDialog`.

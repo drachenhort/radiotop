@@ -190,6 +190,7 @@ def test_run_combines_musicbrainz_and_lastfm(monkeypatch, qapp):
         "_query_lastfm",
         lambda artist, title: ({"genre": "Synthpop", "album": ""}, None),
     )
+    monkeypatch.setattr(thread, "_query_itunes", lambda artist, title: None)
     captured = []
     thread.result_ready.connect(lambda r: captured.append(r))
     thread.run()
@@ -206,7 +207,84 @@ def test_run_emits_not_found_when_both_sources_fail(monkeypatch, qapp):
     thread = TrackLookupThread("Artist - Title")
     monkeypatch.setattr(thread, "_query_musicbrainz", lambda artist, title: None)
     monkeypatch.setattr(thread, "_query_lastfm", lambda artist, title: (None, None))
+    monkeypatch.setattr(thread, "_query_itunes", lambda artist, title: None)
     captured = []
     thread.result_ready.connect(lambda r: captured.append(r))
     thread.run()
     assert captured[0]["found"] is False
+
+
+def test_run_falls_back_to_itunes_when_mb_and_lastfm_miss(monkeypatch, qapp):
+    thread = TrackLookupThread("Daft Punk - One More Time")
+    monkeypatch.setattr(thread, "_query_musicbrainz", lambda artist, title: None)
+    monkeypatch.setattr(thread, "_query_lastfm", lambda artist, title: (None, None))
+    monkeypatch.setattr(
+        thread,
+        "_query_itunes",
+        lambda artist, title: {
+            "artist": "Daft Punk",
+            "title": "One More Time",
+            "album": "Discovery",
+            "genre": "Dance",
+            "year": "2000",
+            "artwork_url": "https://example.com/art/600x600bb.jpg",
+        },
+    )
+    captured = []
+    thread.result_ready.connect(lambda r: captured.append(r))
+    thread.run()
+
+    assert len(captured) == 1
+    result = captured[0]
+    assert result["found"] is True
+    assert result["album"] == "Discovery"
+    assert result["genre"] == "Dance"
+    assert result["year"] == "2000"
+    assert result["release_mbid"] == ""
+    assert result["itunes_artwork_url"] == "https://example.com/art/600x600bb.jpg"
+    assert result["sources"] == ["iTunes"]
+
+
+# ---------------------------------------------------------------- itunes
+def test_query_itunes_parses_first_result(monkeypatch):
+    payload = {
+        "results": [
+            {
+                "artistName": "Daft Punk",
+                "trackName": "One More Time",
+                "collectionName": "Discovery",
+                "primaryGenreName": "Dance",
+                "releaseDate": "2000-11-13T12:00:00Z",
+                "artworkUrl100": "https://example.com/art/100x100bb.jpg",
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        "radiotop_gui.urllib.request.urlopen",
+        lambda req, timeout=None: _FakeResponse(payload),
+    )
+    thread = TrackLookupThread("Daft Punk - One More Time")
+    result = thread._query_itunes("Daft Punk", "One More Time")
+
+    assert result["album"] == "Discovery"
+    assert result["genre"] == "Dance"
+    assert result["year"] == "2000"
+    assert result["artwork_url"] == "https://example.com/art/600x600bb.jpg"
+
+
+def test_query_itunes_returns_none_when_no_results(monkeypatch):
+    monkeypatch.setattr(
+        "radiotop_gui.urllib.request.urlopen",
+        lambda req, timeout=None: _FakeResponse({"results": []}),
+    )
+    thread = TrackLookupThread("Artist - Title")
+    assert thread._query_itunes("Artist", "Title") is None
+
+
+def test_query_itunes_returns_none_on_request_failure(monkeypatch):
+    def _raise(req, timeout=None):
+        raise urllib.error.URLError("boom")
+
+    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    thread = TrackLookupThread("Artist - Title")
+    assert thread._query_itunes("Artist", "Title") is None
