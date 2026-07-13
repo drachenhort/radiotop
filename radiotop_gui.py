@@ -250,6 +250,7 @@ class IcyMetadataThread(QThread):
     POLL_INTERVAL seconds, not continuously."""
 
     title_changed = Signal(str)
+    station_name_ready = Signal(str)
     unsupported = Signal()
 
     POLL_INTERVAL = 20  # seconds between metadata polls
@@ -260,6 +261,7 @@ class IcyMetadataThread(QThread):
         self._stop_event = threading.Event()
         self._resp = None
         self._resp_lock = threading.Lock()
+        self._station_name_emitted = False
 
     def run(self):
         last_title = None
@@ -287,6 +289,17 @@ class IcyMetadataThread(QThread):
         with self._resp_lock:
             self._resp = resp
         try:
+            if not self._station_name_emitted:
+                # icy-name is the station's own broadcast name, sent as a
+                # plain response header (unlike the title, which is embedded
+                # in the audio stream itself) - available on the very first
+                # successful connection, so only worth checking once per
+                # thread rather than every poll.
+                icy_name = (resp.headers.get("icy-name") or "").strip()
+                self._station_name_emitted = True
+                if icy_name:
+                    self.station_name_ready.emit(icy_name)
+
             metaint_raw = resp.headers.get("icy-metaint")
             if not metaint_raw:
                 self.unsupported.emit()
@@ -1495,6 +1508,7 @@ class MainWindow(QMainWindow):
         self._stop_metadata_thread()
         self.meta_thread = IcyMetadataThread(url)
         self.meta_thread.title_changed.connect(self._on_track_title)
+        self.meta_thread.station_name_ready.connect(self._on_icy_station_name)
         self.meta_thread.finished.connect(self._on_meta_thread_finished)
         self.meta_thread.finished.connect(self.meta_thread.deleteLater)
         self.meta_thread.start()
@@ -1505,6 +1519,24 @@ class MainWindow(QMainWindow):
         # still points at the thread that just finished.
         if self.sender() is self.meta_thread:
             self.meta_thread = None
+
+    def _on_icy_station_name(self, icy_name):
+        """Adopts the station's own broadcast name (from the icy-name
+        response header) in place of the placeholder guessed from the URL's
+        hostname when the station was added - but never overrides a name
+        the user actually typed in, custom or not."""
+        if self.current_idx is None:
+            return
+        station = self.stations[self.current_idx]
+        if station["name"] != self._guess_name(station["url"]) or icy_name == station["name"]:
+            return
+        station["name"] = icy_name
+        self.name_label.setText(icy_name)
+        self.statusBar().showMessage(f'Station name from stream: "{icy_name}"', 4000)
+        if station.get("custom"):
+            self._save_custom_stations()
+        self.station_dialog.refresh_list()
+        self._rebuild_stations_menu()
 
     def _stop_metadata_thread(self):
         thread = self.meta_thread

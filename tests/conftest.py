@@ -14,6 +14,33 @@ from PySide6.QtWidgets import QMenu
 import radiotop_gui as rt
 
 
+class _StatusBarStub:
+    def __init__(self):
+        self.messages = []
+
+    def showMessage(self, text, timeout=0):
+        self.messages.append(text)
+
+
+class _StationDialogStub:
+    def __init__(self):
+        self.refresh_list_calls = 0
+
+    def refresh_list(self):
+        self.refresh_list_calls += 1
+
+
+class _LabelStub:
+    def __init__(self):
+        self.text_value = ""
+
+    def setText(self, text):
+        self.text_value = text
+
+    def text(self):
+        return self.text_value
+
+
 @pytest.fixture
 def isolated_settings(tmp_path):
     """A QSettings instance backed by a throwaway INI file, so tests never
@@ -40,6 +67,10 @@ class MainWindowStub(QObject):
         self.stations_menu = QMenu()
         self.play_index_calls = []
         self.show_station_list_dialog_calls = 0
+        self.name_label = _LabelStub()
+        self.station_dialog = _StationDialogStub()
+        self._status_bar = _StatusBarStub()
+        self.save_custom_stations_calls = 0
 
     def play_index(self, idx):
         self.play_index_calls.append(idx)
@@ -47,6 +78,20 @@ class MainWindowStub(QObject):
 
     def _show_station_list_dialog(self):
         self.show_station_list_dialog_calls += 1
+
+    def _guess_name(self, url):
+        return rt.MainWindow._guess_name(self, url)
+
+    def _rebuild_stations_menu(self):
+        rt.MainWindow._rebuild_stations_menu(self)
+
+    def _save_custom_stations(self):
+        self.save_custom_stations_calls += 1
+        if self.settings is not None:
+            rt.MainWindow._save_custom_stations(self)
+
+    def statusBar(self):
+        return self._status_bar
 
 
 @pytest.fixture
