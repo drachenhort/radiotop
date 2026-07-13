@@ -1957,23 +1957,27 @@ class MainWindow(QMainWindow):
         media_status = self.player.mediaStatus()
 
         if media_status == QMediaPlayer.MediaStatus.InvalidMedia:
-            text = "Error"
+            status = "Error"
         elif state == QMediaPlayer.PlaybackState.PlayingState:
             if media_status in (
                 QMediaPlayer.MediaStatus.LoadingMedia,
                 QMediaPlayer.MediaStatus.BufferingMedia,
                 QMediaPlayer.MediaStatus.StalledMedia,
             ):
-                text = "Buffering..."
+                status = "Buffering..."
             else:
-                text = "Playing"
+                status = "Playing"
         elif state == QMediaPlayer.PlaybackState.PausedState:
-            text = "Paused"
+            status = "Paused"
         else:
-            text = "Stopped"
+            status = "Stopped"
+
+        text = status
+        if status == "Playing" and self.current_idx is not None:
+            text = f"Playing - {self.stations[self.current_idx]['name']}"
 
         self.status_label.setText(text)
-        self.status_label.setStyleSheet(f"color: {STATUS_COLORS.get(text, '#888888')};")
+        self.status_label.setStyleSheet(f"color: {STATUS_COLORS.get(status, '#888888')};")
 
         style = self.style()
         if state == QMediaPlayer.PlaybackState.PlayingState:

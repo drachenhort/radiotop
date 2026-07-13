@@ -1,4 +1,7 @@
 import json
+from types import SimpleNamespace
+
+from PySide6.QtMultimedia import QMediaPlayer
 
 import radiotop_gui as rt
 
@@ -113,3 +116,48 @@ def test_rebuild_stations_menu_clears_previous_entries(main_window_stub):
     rt.MainWindow._rebuild_stations_menu(main_window_stub)
     texts = [a.text() for a in main_window_stub.stations_menu.actions()]
     assert texts == ["&Manage Stations..."]
+
+
+# ------------------------------------------------------------- status label
+def _rig_for_update_status(stub, playback_state, media_status=QMediaPlayer.MediaStatus.NoMedia):
+    stub.player = SimpleNamespace(playbackState=lambda: playback_state, mediaStatus=lambda: media_status)
+    label = SimpleNamespace(text_value="")
+    label.setText = lambda t: setattr(label, "text_value", t)
+    label.setStyleSheet = lambda s: None
+    stub.status_label = label
+    stub.play_btn = SimpleNamespace(setIcon=lambda i: None)
+    stub.style = lambda: SimpleNamespace(standardIcon=lambda i: None)
+
+
+def test_update_status_appends_station_name_when_playing(main_window_stub):
+    main_window_stub.stations = [{"name": "Cool FM", "url": "http://a.example.com:7700/stream.mp3", "custom": True}]
+    main_window_stub.current_idx = 0
+    _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
+    rt.MainWindow._update_status(main_window_stub)
+    assert main_window_stub.status_label.text_value == "Playing - Cool FM"
+
+
+def test_update_status_plain_playing_when_nothing_selected(main_window_stub):
+    main_window_stub.stations = []
+    main_window_stub.current_idx = None
+    _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
+    rt.MainWindow._update_status(main_window_stub)
+    assert main_window_stub.status_label.text_value == "Playing"
+
+
+def test_update_status_does_not_append_name_when_stopped(main_window_stub):
+    main_window_stub.stations = [{"name": "Cool FM", "url": "http://a.example.com:7700/stream.mp3", "custom": True}]
+    main_window_stub.current_idx = 0
+    _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.StoppedState)
+    rt.MainWindow._update_status(main_window_stub)
+    assert main_window_stub.status_label.text_value == "Stopped"
+
+
+def test_update_status_does_not_append_name_when_buffering(main_window_stub):
+    main_window_stub.stations = [{"name": "Cool FM", "url": "http://a.example.com:7700/stream.mp3", "custom": True}]
+    main_window_stub.current_idx = 0
+    _rig_for_update_status(
+        main_window_stub, QMediaPlayer.PlaybackState.PlayingState, QMediaPlayer.MediaStatus.BufferingMedia
+    )
+    rt.MainWindow._update_status(main_window_stub)
+    assert main_window_stub.status_label.text_value == "Buffering..."
