@@ -1112,7 +1112,8 @@ class StationListDialog(QDialog):
         if idx is None:
             return
         station = self.main.stations[idx]
-        dlg = EditStationDialog(station["name"], station["url"], self)
+        original_name = station["name"]
+        dlg = EditStationDialog(original_name, station["url"], self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         name, url = dlg.values()
@@ -1122,6 +1123,12 @@ class StationListDialog(QDialog):
         url, was_adjusted = _normalize_station_url(url)
         if not name:
             name = self.main._guess_name(url)
+        elif name == original_name and station["name"] != original_name:
+            # The background icy-name lookup (_on_icy_station_name) adopted a
+            # freshly-discovered name into the station while this dialog was
+            # open - don't clobber it with the stale pre-filled value the
+            # user left untouched.
+            name = station["name"]
 
         station["name"] = name
         url_changed = url != station["url"]

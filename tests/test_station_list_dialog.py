@@ -170,6 +170,43 @@ def test_edit_station_does_not_reload_when_not_playing(qapp, monkeypatch):
     assert main.play_index_calls == []
 
 
+def test_edit_station_keeps_icy_adopted_name_over_stale_prefill(qapp, monkeypatch):
+    # Simulate the background icy-name lookup (_on_icy_station_name) renaming
+    # the station while the Edit dialog is still open with its original
+    # (now-stale) pre-filled name. The dialog's OK click carries that stale
+    # name unmodified, so it must not clobber the freshly-adopted one.
+    station = _station("old.example.com", "http://old.example.com:7700/stream.mp3")
+
+    def fake_exec(self):
+        station["name"] = "Icy Adopted Name"  # background thread updates it mid-dialog
+        return QDialog.DialogCode.Accepted  # name_edit still holds the stale "old.example.com"
+
+    monkeypatch.setattr(EditStationDialog, "exec", fake_exec)
+
+    main = _StubMainWindow([station])
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(0)
+    dlg._edit_station()
+
+    assert main.stations[0]["name"] == "Icy Adopted Name"
+
+
+def test_edit_station_applies_user_rename_even_if_matches_old_guess(qapp, monkeypatch):
+    # If the station's name never changed in the background, a user-submitted
+    # name is applied normally, whether or not it happens to be unchanged.
+    def fake_exec(self):
+        return QDialog.DialogCode.Accepted  # name_edit left as-is: "Old Name"
+
+    monkeypatch.setattr(EditStationDialog, "exec", fake_exec)
+
+    main = _StubMainWindow([_station("Old Name", "http://old.example.com:7700/stream.mp3")])
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(0)
+    dlg._edit_station()
+
+    assert main.stations[0]["name"] == "Old Name"
+
+
 def test_edit_station_cancelled_leaves_station_unchanged(qapp, monkeypatch):
     monkeypatch.setattr(EditStationDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
 
