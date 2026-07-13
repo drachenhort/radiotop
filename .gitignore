@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environments (created by install_windows.ps1 or manual setup)
+.venv/
+venv/
+
+# PyInstaller build output
+build/
+dist/
+*.spec.bak
