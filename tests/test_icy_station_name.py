@@ -1,3 +1,7 @@
+from types import SimpleNamespace
+
+from PySide6.QtMultimedia import QMediaPlayer
+
 import radiotop_gui as rt
 from radiotop_gui import IcyMetadataThread
 
@@ -102,6 +106,20 @@ def test_on_icy_station_name_noop_when_name_unchanged(main_window_stub):
     rt.MainWindow._on_icy_station_name(main_window_stub, "streams.example.com")
 
     assert main_window_stub.save_custom_stations_calls == 0
+
+
+def test_on_icy_station_name_updates_status_label_when_playing(main_window_stub):
+    url = "http://streams.example.com:7700/stream.mp3"
+    main_window_stub.stations = [_station("streams.example.com", url)]
+    main_window_stub.current_idx = 0
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+
+    rt.MainWindow._on_icy_station_name(main_window_stub, "Best Radio Ever")
+
+    assert main_window_stub.status_label.text() == "Playing - Best Radio Ever"
 
 
 def test_on_icy_station_name_does_not_save_non_custom_station(main_window_stub):

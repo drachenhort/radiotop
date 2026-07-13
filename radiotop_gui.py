@@ -1539,6 +1539,7 @@ class MainWindow(QMainWindow):
             return
         station["name"] = icy_name
         self.name_label.setText(icy_name)
+        self._update_status()  # "Playing - <name>" should reflect the adopted name too
         self.statusBar().showMessage(f'Station name from stream: "{icy_name}"', 4000)
         if station.get("custom"):
             self._save_custom_stations()
