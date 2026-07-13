@@ -161,3 +161,12 @@ def test_update_status_does_not_append_name_when_buffering(main_window_stub):
     )
     rt.MainWindow._update_status(main_window_stub)
     assert main_window_stub.status_label.text_value == "Buffering..."
+
+
+def test_update_status_prefers_live_icy_name_over_stored_name(main_window_stub):
+    main_window_stub.stations = [{"name": "My Favorite Station", "url": "http://a.example.com:7700/stream.mp3", "custom": True}]
+    main_window_stub.current_idx = 0
+    main_window_stub._current_icy_name = "Actual Broadcast Name"
+    _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
+    rt.MainWindow._update_status(main_window_stub)
+    assert main_window_stub.status_label.text_value == "Playing - Actual Broadcast Name"

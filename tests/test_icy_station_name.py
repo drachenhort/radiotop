@@ -92,6 +92,24 @@ def test_on_icy_station_name_does_not_override_explicit_name(main_window_stub):
     assert main_window_stub.save_custom_stations_calls == 0
 
 
+def test_on_icy_station_name_still_updates_status_label_for_explicit_name(main_window_stub):
+    # Even when a user-typed station name is left untouched (see the test
+    # above), the "Playing - X" status should reflect the stream's actual
+    # reported icy-name, not the stored/typed station name.
+    url = "http://streams.example.com:7700/stream.mp3"
+    main_window_stub.stations = [_station("My Favorite Station", url)]
+    main_window_stub.current_idx = 0
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+
+    rt.MainWindow._on_icy_station_name(main_window_stub, "Best Radio Ever")
+
+    assert main_window_stub.stations[0]["name"] == "My Favorite Station"
+    assert main_window_stub.status_label.text() == "Playing - Best Radio Ever"
+
+
 def test_on_icy_station_name_noop_when_nothing_playing(main_window_stub):
     main_window_stub.current_idx = None
     rt.MainWindow._on_icy_station_name(main_window_stub, "Best Radio Ever")

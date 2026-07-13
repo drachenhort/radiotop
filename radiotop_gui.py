@@ -1210,6 +1210,7 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(APP_ORG, APP_NAME)
         self.stations = list(DEFAULT_STATIONS) + self._load_custom_stations()
         self.current_idx = None
+        self._current_icy_name = None
         self._quitting = False
         self.meta_thread = None
         self.lookup_thread = None
@@ -1489,6 +1490,7 @@ class MainWindow(QMainWindow):
             return
         station = self.stations[idx]
         self.current_idx = idx
+        self._current_icy_name = None
         if self.stream_proxy is not None:
             play_url = self.stream_proxy.local_url(station["url"])
         else:
@@ -1528,18 +1530,23 @@ class MainWindow(QMainWindow):
             self.meta_thread = None
 
     def _on_icy_station_name(self, icy_name):
-        """Adopts the station's own broadcast name (from the icy-name
-        response header) in place of the placeholder guessed from the URL's
-        hostname when the station was added - but never overrides a name
-        the user actually typed in, custom or not."""
+        """Records the station's own broadcast name (from the icy-name
+        response header) so the "Playing - <name>" status always reflects
+        the stream's actual reported name - and separately, adopts it in
+        place of the station's stored name if that name is still just the
+        placeholder guessed from the URL's hostname when the station was
+        added, but never overrides a name the user actually typed in,
+        custom or not."""
         if self.current_idx is None:
             return
+        self._current_icy_name = icy_name
         station = self.stations[self.current_idx]
         if station["name"] != self._guess_name(station["url"]) or icy_name == station["name"]:
+            self._update_status()  # status label picks up self._current_icy_name regardless
             return
         station["name"] = icy_name
         self.name_label.setText(icy_name)
-        self._update_status()  # "Playing - <name>" should reflect the adopted name too
+        self._update_status()
         self.statusBar().showMessage(f'Station name from stream: "{icy_name}"', 4000)
         if station.get("custom"):
             self._save_custom_stations()
@@ -1975,7 +1982,11 @@ class MainWindow(QMainWindow):
 
         text = status
         if status == "Playing" and self.current_idx is not None:
-            text = f"Playing - {self.stations[self.current_idx]['name']}"
+            # Prefer the stream's own live icy-name over the stored station
+            # name, which may be a name the user typed in and that
+            # _on_icy_station_name therefore left untouched.
+            display_name = self._current_icy_name or self.stations[self.current_idx]["name"]
+            text = f"Playing - {display_name}"
 
         self.status_label.setText(text)
         self.status_label.setStyleSheet(f"color: {STATUS_COLORS.get(status, '#888888')};")

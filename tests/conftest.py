@@ -69,6 +69,7 @@ class MainWindowStub(QObject):
         self.settings = settings
         self.stations = stations if stations is not None else []
         self.current_idx = None
+        self._current_icy_name = None
         self.stations_menu = QMenu()
         self.play_index_calls = []
         self.show_station_list_dialog_calls = 0
