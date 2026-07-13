@@ -79,6 +79,9 @@ def test_on_icy_station_name_renames_when_name_was_guessed(main_window_stub):
     assert main_window_stub.name_label.text() == "Best Radio Ever"
     assert main_window_stub.station_dialog.refresh_list_calls == 1
     assert main_window_stub.save_custom_stations_calls == 1
+    assert main_window_stub.notification_calls == [
+        ("RadioTop - Station Name Found", 'Now known as "Best Radio Ever"')
+    ]
 
 
 def test_on_icy_station_name_does_not_override_explicit_name(main_window_stub):
@@ -90,6 +93,7 @@ def test_on_icy_station_name_does_not_override_explicit_name(main_window_stub):
 
     assert main_window_stub.stations[0]["name"] == "My Favorite Station"
     assert main_window_stub.save_custom_stations_calls == 0
+    assert main_window_stub.notification_calls == []  # no adoption -> no notification
 
 
 def test_on_icy_station_name_still_updates_status_label_for_explicit_name(main_window_stub):

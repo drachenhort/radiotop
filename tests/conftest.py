@@ -86,10 +86,14 @@ class MainWindowStub(QObject):
         self.status_label = _LabelStub()
         self.play_btn = SimpleNamespace(setIcon=lambda i: None)
         self.style = lambda: SimpleNamespace(standardIcon=lambda i: None)
+        self.notification_calls = []
 
     def play_index(self, idx):
         self.play_index_calls.append(idx)
         self.current_idx = idx
+
+    def _show_notification(self, title, body, icon=None):
+        self.notification_calls.append((title, body))
 
     def _show_station_list_dialog(self):
         self.show_station_list_dialog_calls += 1

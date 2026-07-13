@@ -1555,6 +1555,7 @@ class MainWindow(QMainWindow):
         self.name_label.setText(icy_name)
         self._update_status()
         self.statusBar().showMessage(f'Station name from stream: "{icy_name}"', 4000)
+        self._show_notification("RadioTop - Station Name Found", f'Now known as "{icy_name}"')
         if station.get("custom"):
             self._save_custom_stations()
         self.station_dialog.refresh_list()
