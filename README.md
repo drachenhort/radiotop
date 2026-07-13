@@ -1,8 +1,9 @@
 # RadioTop
-I needed a slim, non-intrusive, non-overbloated (in my opinion) player program for SUB/Wave Radio (https://getsubwave.com) - so i set Claude on it. 
-This is the Result. For everyone to enjoy.
+I needed a slim, non-intrusive, non-overbloated (in my opinion) player program for SUB/Wave Radio (https://getsubwave.com)
+I never used Claude before, I figured this would be the Chance for it to Shine.
 
-Caveat: This code has been created through Claude.ai
+This is the Result. 
+For everyone to enjoy.
 
 A simple, native-looking internet radio player.
 
