@@ -2276,7 +2276,7 @@ class MainWindow(QMainWindow):
         dlg = QMessageBox(self)
         dlg.setWindowTitle("About RadioTop")
         dlg.setText(
-            "<b>RadioTop</b><br>A simple internet radio player.<br>"
+            "<b>RadioTop</b><br>A simple internet radio player. No bloat, just play.<br>"
             "Built with PySide6 / Qt Multimedia."
         )
         logo_path = _resource_path("assets", "radiotop_about_logo.png")
