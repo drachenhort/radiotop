@@ -20,16 +20,17 @@ Notes:
   care of pulling in the Qt plugins RadioTop needs (platform, styles,
   multimedia/Windows Media Foundation backend) automatically - no manual
   --hidden-import / --collect-all flags should be needed.
-- assets/radiotop.png is bundled as data so the app can still find and
-  use it at runtime via the _resource_path() helper in radiotop_gui.py,
-  even when running from the frozen executable.
+- assets/radiotop.png and assets/radiotop_about_logo.png are bundled as
+  data so the app can still find and use them at runtime via the
+  _resource_path() helper in radiotop_gui.py, even when running from the
+  frozen executable.
 """
 
 a = Analysis(
     ['radiotop_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets/radiotop.png', 'assets')],
+    datas=[('assets/radiotop.png', 'assets'), ('assets/radiotop_about_logo.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -2273,11 +2273,24 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def _show_about(self):
-        QMessageBox.about(
-            self, "About RadioTop",
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("About RadioTop")
+        dlg.setText(
             "<b>RadioTop</b><br>A simple internet radio player.<br>"
-            "Built with PySide6 / Qt Multimedia.",
+            "Built with PySide6 / Qt Multimedia."
         )
+        logo_path = _resource_path("assets", "radiotop_about_logo.png")
+        logo = QPixmap(logo_path)
+        if not logo.isNull():
+            dlg.setIconPixmap(
+                logo.scaled(
+                    160, 160,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        dlg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dlg.exec()
 
     def quit_app(self):
         self._quitting = True
