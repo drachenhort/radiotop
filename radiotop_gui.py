@@ -38,6 +38,7 @@ import re
 import socket
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -361,19 +362,20 @@ class IcyMetadataThread(QThread):
 
 
 class _CancellableRequestThread(QThread):
-    """QThread base for threads that make one or more sequential blocking
-    urlopen() calls. Provides the same cooperative-shutdown mechanism as
+    """QThread base for threads that make one or more blocking urlopen()
+    calls, possibly concurrently (e.g. from a ThreadPoolExecutor within
+    run()). Provides the same cooperative-shutdown mechanism as
     IcyMetadataThread.stop(): closing the response wrapper alone doesn't
     reliably interrupt a blocking read happening on another thread, so
-    stop() shuts down the underlying socket directly. This lets callers
-    wait briefly for a graceful exit instead of reaching for
-    QThread.terminate(), which can kill the thread mid-syscall and leave a
-    socket or lock in a bad state."""
+    stop() shuts down the underlying socket of every open response
+    directly. This lets callers wait briefly for a graceful exit instead
+    of reaching for QThread.terminate(), which can kill the thread
+    mid-syscall and leave a socket or lock in a bad state."""
 
     def __init__(self):
         super().__init__()
         self._stop_event = threading.Event()
-        self._resp = None
+        self._open_resps = set()
         self._resp_lock = threading.Lock()
 
     def _urlopen(self, req, timeout=10):
@@ -387,19 +389,18 @@ class _CancellableRequestThread(QThread):
             if self._stop_event.is_set():
                 resp.close()
                 return None
-            self._resp = resp
+            self._open_resps.add(resp)
         return resp
 
     def _release(self, resp):
         with self._resp_lock:
-            if self._resp is resp:
-                self._resp = None
+            self._open_resps.discard(resp)
 
     def stop(self):
         self._stop_event.set()
         with self._resp_lock:
-            resp = self._resp
-        if resp is not None:
+            resps = list(self._open_resps)
+        for resp in resps:
             try:
                 resp.fp.raw._sock.shutdown(socket.SHUT_RDWR)
             except Exception:
@@ -593,13 +594,18 @@ class TrackLookupThread(_CancellableRequestThread):
             self.result_ready.emit({"raw_title": self.raw_title, "found": False})
             return
 
-        mb = self._query_musicbrainz(artist, title)
-        if self._stop_event.is_set():
-            return
-        lfm, lfm_error = self._query_lastfm(artist, title)
-        if self._stop_event.is_set():
-            return
-        itunes = self._query_itunes(artist, title)
+        # Run the three lookups concurrently rather than one after another -
+        # each is an independent blocking request with its own timeout, so
+        # doing them in sequence could multiply the worst-case wait (e.g. a
+        # slow/unreachable MusicBrainz) by three before the UI sees anything.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            mb_future = pool.submit(self._query_musicbrainz, artist, title)
+            lfm_future = pool.submit(self._query_lastfm, artist, title)
+            itunes_future = pool.submit(self._query_itunes, artist, title)
+            mb = mb_future.result()
+            lfm, lfm_error = lfm_future.result()
+            itunes = itunes_future.result()
+
         if self._stop_event.is_set():
             return
 
