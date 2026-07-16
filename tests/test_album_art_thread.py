@@ -1,3 +1,4 @@
+import json
 import urllib.error
 
 from radiotop_gui import AlbumArtThread
@@ -9,6 +10,45 @@ class _FakeResponse:
 
     def read(self):
         return self._data
+
+
+def _json_response(obj):
+    return _FakeResponse(json.dumps(obj).encode("utf-8"))
+
+
+def test_run_uses_deezer_first_when_artist_and_title_present(monkeypatch, qapp):
+    calls = []
+
+    def _urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        if "api.deezer.com/search/track" in req.full_url:
+            return _json_response({"data": [{"album": {"cover_xl": "https://deezer.example/cover.jpg"}}]})
+        return _FakeResponse(b"deezer-cover-bytes")
+
+    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg", "Radiohead", "Creep")
+    captured = []
+    thread.image_ready.connect(lambda data: captured.append(data))
+    thread.run()
+
+    assert captured == [b"deezer-cover-bytes"]
+    assert not any("coverartarchive.org" in url for url in calls)  # CAA/itunes not touched
+
+
+def test_run_falls_back_to_cover_art_archive_when_deezer_misses(monkeypatch, qapp):
+    def _urlopen(req, timeout=None):
+        if "api.deezer.com" in req.full_url:
+            return _json_response({"data": []})
+        assert req.full_url == "https://coverartarchive.org/release/mbid-123/front-500"
+        return _FakeResponse(b"cover-art-bytes")
+
+    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg", "Radiohead", "Creep")
+    captured = []
+    thread.image_ready.connect(lambda data: captured.append(data))
+    thread.run()
+
+    assert captured == [b"cover-art-bytes"]
 
 
 def test_run_uses_cover_art_archive_when_mbid_present(monkeypatch, qapp):

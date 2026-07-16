@@ -83,12 +83,11 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
     needed), optionally overriding genre with Last.fm tags if a Last.fm API key is configured, with
     the iTunes Search API (also no key needed) queried as a fallback source for album/year/genre and
     for an artwork URL used by `AlbumArtThread`.
-  - `ArtistImageThread` — artist photo, tried in order: Discogs (if a token is configured) → Deezer
-    → Wikipedia → Last.fm. Deezer, like MusicBrainz/iTunes, needs no API key.
-  - `AlbumArtThread` — cover art via the Cover Art Archive, keyed by MusicBrainz release ID, falling
-    back to the iTunes artwork URL (from `TrackLookupThread`) when MusicBrainz found no release or
-    the Cover Art Archive has no cover on file for it, and finally to a Deezer track search (by
-    artist/title, also from `TrackLookupThread`'s result) when both of those miss.
+  - `ArtistImageThread` — artist photo, tried in order: Deezer (primary; no key needed) → Discogs (if
+    a token is configured) → Wikipedia → Last.fm.
+  - `AlbumArtThread` — cover art, tried in order: Deezer (primary; an artist/title track search, no
+    key needed) → the Cover Art Archive, keyed by MusicBrainz release ID → the iTunes artwork URL
+    (from `TrackLookupThread`).
   - `SimilarTracksThread` — a short "similar tracks" list for the `TrackInfoDialog`, sourced from
     Deezer (no key needed): resolves the current track to a Deezer artist ID via search, then uses
     that artist's Deezer "radio" (smart mix) as the pool, optionally widened with a few top tracks

@@ -676,9 +676,9 @@ class TrackLookupThread(_CancellableRequestThread):
 
 
 class ArtistImageThread(_CancellableRequestThread):
-    """Fetches a picture of the current artist/band. Tries sources in order
-    of typical photo quality/coverage: Discogs first (if a token is
-    configured), then Deezer, then Wikipedia, then Last.fm as a last resort.
+    """Fetches a picture of the current artist/band. Deezer (no key needed)
+    is tried first as the primary source, then Discogs (if a token is
+    configured), then Wikipedia, then Last.fm as a last resort.
 
     Note: Last.fm deprecated real photos in their API some time ago -
     artist.getInfo now returns a generic gray placeholder image for
@@ -705,11 +705,9 @@ class ArtistImageThread(_CancellableRequestThread):
         self.discogs_token = discogs_token
 
     def run(self):
-        image_bytes = None
-        if self.discogs_token:
+        image_bytes = self._fetch_from_deezer()
+        if image_bytes is None and self.discogs_token and not self._stop_event.is_set():
             image_bytes = self._fetch_from_discogs()
-        if image_bytes is None and not self._stop_event.is_set():
-            image_bytes = self._fetch_from_deezer()
         if image_bytes is None and not self._stop_event.is_set():
             image_bytes = self._fetch_from_wikipedia()
         if image_bytes is None and self.lastfm_api_key and not self._stop_event.is_set():
@@ -871,13 +869,12 @@ class ArtistImageThread(_CancellableRequestThread):
 
 
 class AlbumArtThread(_CancellableRequestThread):
-    """Fetches the album cover, preferring the Cover Art Archive, keyed by
-    the MusicBrainz release ID (no key required) - ID-based, so it's more
-    reliable than a name search. Falls back to the artwork URL returned by
-    an iTunes Search API track match when either MusicBrainz found no
-    release or the Cover Art Archive has no cover on file for it, and
-    finally to a Deezer track search (also no key required) when both of
-    those miss."""
+    """Fetches the album cover. Deezer (no key required) is tried first as
+    the primary source via an artist/title track search. Falls back to the
+    Cover Art Archive, keyed by the MusicBrainz release ID - more reliable
+    than a name search, but only available when MusicBrainz matched a
+    release - and finally to the artwork URL returned by an iTunes Search
+    API track match when both of those miss."""
 
     image_ready = Signal(bytes)
     not_found = Signal()
@@ -934,17 +931,12 @@ class AlbumArtThread(_CancellableRequestThread):
 
     def run(self):
         image_bytes = None
-        if self.release_mbid:
+        if self.artist_name and self.track_title:
+            image_bytes = self._fetch_from_deezer()
+        if image_bytes is None and self.release_mbid and not self._stop_event.is_set():
             image_bytes = self._fetch_from_cover_art_archive()
         if image_bytes is None and self.itunes_artwork_url and not self._stop_event.is_set():
             image_bytes = self._fetch_from_itunes()
-        if (
-            image_bytes is None
-            and self.artist_name
-            and self.track_title
-            and not self._stop_event.is_set()
-        ):
-            image_bytes = self._fetch_from_deezer()
 
         if self._stop_event.is_set():
             return
