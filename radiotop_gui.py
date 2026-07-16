@@ -186,6 +186,15 @@ class _StreamProxyHandler(BaseHTTPRequestHandler):
         # the original stream URL (e.g. %20, %2B) gets decoded twice and
         # corrupted before being sent upstream.
 
+        # Restrict to http(s) - urlopen() also accepts file://, ftp://, and
+        # data: URLs, and since this server listens on 127.0.0.1, any local
+        # process (or a webpage's fetch()/<img> to this port) could
+        # otherwise use it to read local files or reach internal-network
+        # addresses this proxy was never meant to touch.
+        if urlparse(target).scheme not in ("http", "https"):
+            self.send_error(400, "Unsupported url scheme")
+            return
+
         try:
             req = urllib.request.Request(target, headers={"User-Agent": RADIOTOP_USER_AGENT})
             upstream = urllib.request.urlopen(req, timeout=15)
