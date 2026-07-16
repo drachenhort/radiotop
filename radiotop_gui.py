@@ -212,24 +212,20 @@ class _StreamProxyHandler(BaseHTTPRequestHandler):
                 pass
             return
 
-        try:
-            content_type = upstream.headers.get("Content-Type", "audio/mpeg")
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Connection", "close")
-            self.end_headers()
-            while True:
-                chunk = upstream.read(8192)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass  # local client (QMediaPlayer) disconnected - normal on stop/switch
-        finally:
+        with upstream:
             try:
-                upstream.close()
-            except Exception:
-                pass
+                content_type = upstream.headers.get("Content-Type", "audio/mpeg")
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Connection", "close")
+                self.end_headers()
+                while True:
+                    chunk = upstream.read(8192)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass  # local client (QMediaPlayer) disconnected - normal on stop/switch
 
 
 class StreamProxyServer:
@@ -1425,9 +1421,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
 
-        right = root  # kept as an alias since the rest of this method was written against `right`
-
-        right.addStretch(1)
+        root.addStretch(1)
 
         self.name_label = QLabel("Nothing playing")
         name_font = QFont()
@@ -1436,7 +1430,7 @@ class MainWindow(QMainWindow):
         self.name_label.setFont(name_font)
         self.name_label.setWordWrap(True)
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right.addWidget(self.name_label)
+        root.addWidget(self.name_label)
 
         self.track_label = QLabel("")
         self.track_label.setWordWrap(True)
@@ -1445,7 +1439,7 @@ class MainWindow(QMainWindow):
         track_font.setItalic(True)
         self.track_label.setFont(track_font)
         self.track_label.setStyleSheet("color: #3daee9;")
-        right.addWidget(self.track_label)
+        root.addWidget(self.track_label)
 
         self.status_label = QLabel("Stopped")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1453,9 +1447,9 @@ class MainWindow(QMainWindow):
         status_font.setBold(True)
         self.status_label.setFont(status_font)
         self.status_label.setStyleSheet(f"color: {STATUS_COLORS['Stopped']};")
-        right.addWidget(self.status_label)
+        root.addWidget(self.status_label)
 
-        right.addSpacing(16)
+        root.addSpacing(16)
 
         transport = QHBoxLayout()
         transport.addStretch(1)
@@ -1474,7 +1468,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self.stop_playback)
         transport.addWidget(self.stop_btn)
         transport.addStretch(1)
-        right.addLayout(transport)
+        root.addLayout(transport)
 
         info_row = QHBoxLayout()
         info_row.addStretch(1)
@@ -1482,9 +1476,9 @@ class MainWindow(QMainWindow):
         self.info_btn.clicked.connect(self._show_track_info_dialog)
         info_row.addWidget(self.info_btn)
         info_row.addStretch(1)
-        right.addLayout(info_row)
+        root.addLayout(info_row)
 
-        right.addSpacing(10)
+        root.addSpacing(10)
 
         image_row = QHBoxLayout()
         image_row.addStretch(1)
@@ -1516,11 +1510,11 @@ class MainWindow(QMainWindow):
         image_row.addLayout(album_col)
 
         image_row.addStretch(1)
-        right.addLayout(image_row)
+        root.addLayout(image_row)
         self._set_album_art_placeholder("No image")
         self._set_artist_image_placeholder("No image")
 
-        right.addSpacing(16)
+        root.addSpacing(16)
 
         vol_row = QHBoxLayout()
         vol_icon = QLabel()
@@ -1534,7 +1528,7 @@ class MainWindow(QMainWindow):
         self.volume_pct_label = QLabel(f"{start_volume}%")
         self.volume_pct_label.setFixedWidth(36)
         vol_row.addWidget(self.volume_pct_label)
-        right.addLayout(vol_row)
+        root.addLayout(vol_row)
 
         device_row = QHBoxLayout()
         device_icon = QLabel()
@@ -1550,7 +1544,7 @@ class MainWindow(QMainWindow):
         refresh_btn.setFixedSize(28, 28)
         refresh_btn.clicked.connect(lambda: self._refresh_output_devices(preserve_selection=True))
         device_row.addWidget(refresh_btn)
-        right.addLayout(device_row)
+        root.addLayout(device_row)
 
         self.media_devices = QMediaDevices(self)
         self.media_devices.audioOutputsChanged.connect(
@@ -1558,7 +1552,7 @@ class MainWindow(QMainWindow):
         )
         self._refresh_output_devices(preserve_selection=False)
 
-        right.addStretch(2)
+        root.addStretch(2)
 
         # ---- menu bar ----
         file_menu = self.menuBar().addMenu("&File")
