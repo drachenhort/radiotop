@@ -677,7 +677,7 @@ class TrackLookupThread(_CancellableRequestThread):
 class ArtistImageThread(_CancellableRequestThread):
     """Fetches a picture of the current artist/band. Tries sources in order
     of typical photo quality/coverage: Discogs first (if a token is
-    configured), then Wikipedia, then Last.fm as a last resort.
+    configured), then Deezer, then Wikipedia, then Last.fm as a last resort.
 
     Note: Last.fm deprecated real photos in their API some time ago -
     artist.getInfo now returns a generic gray placeholder image for
@@ -690,8 +690,11 @@ class ArtistImageThread(_CancellableRequestThread):
 
     LASTFM_ENDPOINT = "https://ws.audioscrobbler.com/2.0/"
     DISCOGS_ENDPOINT = "https://api.discogs.com"
+    DEEZER_ENDPOINT = "https://api.deezer.com"
     # Hash Last.fm uses for its "no image available" placeholder graphic.
     LASTFM_PLACEHOLDER_HASH = "2a96cbd8b46e442fc41c2b86b821562f"
+    # MD5-of-empty-string hash Deezer embeds in its "no photo" placeholder URL.
+    DEEZER_PLACEHOLDER_HASH = "d41d8cd98f00b204e9800998ecf8427e"
     LASTFM_SIZE_RANK = {"small": 0, "medium": 1, "large": 2, "extralarge": 3, "mega": 4}
 
     def __init__(self, artist_name, lastfm_api_key="", discogs_token=""):
@@ -704,6 +707,8 @@ class ArtistImageThread(_CancellableRequestThread):
         image_bytes = None
         if self.discogs_token:
             image_bytes = self._fetch_from_discogs()
+        if image_bytes is None and not self._stop_event.is_set():
+            image_bytes = self._fetch_from_deezer()
         if image_bytes is None and not self._stop_event.is_set():
             image_bytes = self._fetch_from_wikipedia()
         if image_bytes is None and self.lastfm_api_key and not self._stop_event.is_set():
@@ -767,6 +772,37 @@ class ArtistImageThread(_CancellableRequestThread):
 
         try:
             img_req = urllib.request.Request(image_url, headers=self._discogs_headers())
+            return self._fetch_bytes(img_req)
+        except Exception:
+            return None
+
+    def _fetch_from_deezer(self):
+        url = self.DEEZER_ENDPOINT + "/search/artist?" + urlencode({
+            "q": self.artist_name,
+            "limit": 1,
+        })
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
+                return None
+        except Exception:
+            return None
+
+        results = data.get("data") or []
+        if not results:
+            return None
+
+        image_url = (
+            results[0].get("picture_xl")
+            or results[0].get("picture_big")
+            or results[0].get("picture_medium")
+        )
+        if not image_url or self.DEEZER_PLACEHOLDER_HASH in image_url:
+            return None
+
+        try:
+            img_req = urllib.request.Request(image_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
             return self._fetch_bytes(img_req)
         except Exception:
             return None
@@ -838,15 +874,21 @@ class AlbumArtThread(_CancellableRequestThread):
     the MusicBrainz release ID (no key required) - ID-based, so it's more
     reliable than a name search. Falls back to the artwork URL returned by
     an iTunes Search API track match when either MusicBrainz found no
-    release or the Cover Art Archive has no cover on file for it."""
+    release or the Cover Art Archive has no cover on file for it, and
+    finally to a Deezer track search (also no key required) when both of
+    those miss."""
 
     image_ready = Signal(bytes)
     not_found = Signal()
 
-    def __init__(self, release_mbid, itunes_artwork_url=""):
+    DEEZER_ENDPOINT = "https://api.deezer.com"
+
+    def __init__(self, release_mbid, itunes_artwork_url="", artist_name="", track_title=""):
         super().__init__()
         self.release_mbid = release_mbid
         self.itunes_artwork_url = itunes_artwork_url
+        self.artist_name = artist_name
+        self.track_title = track_title
 
     def _fetch_from_cover_art_archive(self):
         url = f"https://coverartarchive.org/release/{self.release_mbid}/front-500"
@@ -863,12 +905,45 @@ class AlbumArtThread(_CancellableRequestThread):
         except Exception:
             return None
 
+    def _fetch_from_deezer(self):
+        query = f'artist:"{self.artist_name}" track:"{self.track_title}"'
+        url = self.DEEZER_ENDPOINT + "/search/track?" + urlencode({"q": query, "limit": 1})
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
+                return None
+        except Exception:
+            return None
+
+        results = data.get("data") or []
+        if not results:
+            return None
+
+        album = results[0].get("album") or {}
+        image_url = album.get("cover_xl") or album.get("cover_big") or album.get("cover_medium")
+        if not image_url:
+            return None
+
+        try:
+            img_req = urllib.request.Request(image_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_bytes(img_req)
+        except Exception:
+            return None
+
     def run(self):
         image_bytes = None
         if self.release_mbid:
             image_bytes = self._fetch_from_cover_art_archive()
         if image_bytes is None and self.itunes_artwork_url and not self._stop_event.is_set():
             image_bytes = self._fetch_from_itunes()
+        if (
+            image_bytes is None
+            and self.artist_name
+            and self.track_title
+            and not self._stop_event.is_set()
+        ):
+            image_bytes = self._fetch_from_deezer()
 
         if self._stop_event.is_set():
             return
@@ -1826,8 +1901,10 @@ class MainWindow(QMainWindow):
             self._fetch_artist_image(confirmed_artist)
         release_mbid = result.get("release_mbid")
         itunes_artwork_url = result.get("itunes_artwork_url")
-        if release_mbid or itunes_artwork_url:
-            self._fetch_album_art(release_mbid, itunes_artwork_url)
+        track_artist = result.get("artist") or ""
+        track_title = result.get("title") or ""
+        if release_mbid or itunes_artwork_url or (track_artist and track_title):
+            self._fetch_album_art(release_mbid, itunes_artwork_url, track_artist, track_title)
         elif result.get("found"):
             self._set_album_art_placeholder("No cover art")
 
@@ -1989,12 +2066,17 @@ class MainWindow(QMainWindow):
         self.album_art_label.setPixmap(scaled)
         self.album_art_label.setStyleSheet("border: 1px solid #555; border-radius: 4px; background: #222;")
 
-    def _fetch_album_art(self, release_mbid, itunes_artwork_url=""):
+    def _fetch_album_art(self, release_mbid, itunes_artwork_url="", artist_name="", track_title=""):
         release_mbid = (release_mbid or "").strip()
         itunes_artwork_url = (itunes_artwork_url or "").strip()
-        # Cache/dedup key: prefer the MBID (stable, ID-based) and fall back
-        # to the iTunes artwork URL when no MusicBrainz release was matched.
-        cache_key = release_mbid or itunes_artwork_url
+        artist_name = (artist_name or "").strip()
+        track_title = (track_title or "").strip()
+        # Cache/dedup key: prefer the MBID (stable, ID-based), then the
+        # iTunes artwork URL, and finally the artist/title pair when neither
+        # of those was available (Deezer-only lookup).
+        cache_key = release_mbid or itunes_artwork_url or (
+            f"{artist_name} {track_title}" if artist_name and track_title else ""
+        )
         if not cache_key:
             self.last_album_key = None
             self._stop_album_art_thread()
@@ -2019,7 +2101,7 @@ class MainWindow(QMainWindow):
 
         self._set_album_art_placeholder("Loading...")
         self._stop_album_art_thread()
-        self.album_art_thread = AlbumArtThread(release_mbid, itunes_artwork_url)
+        self.album_art_thread = AlbumArtThread(release_mbid, itunes_artwork_url, artist_name, track_title)
         self.album_art_thread.image_ready.connect(
             lambda data, key=cache_key: self._on_album_art_ready(key, data)
         )

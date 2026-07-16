@@ -83,11 +83,12 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
     needed), optionally overriding genre with Last.fm tags if a Last.fm API key is configured, with
     the iTunes Search API (also no key needed) queried as a fallback source for album/year/genre and
     for an artwork URL used by `AlbumArtThread`.
-  - `ArtistImageThread` — artist photo, tried in order: Discogs (if a token is configured) → Wikipedia
-    → Last.fm.
+  - `ArtistImageThread` — artist photo, tried in order: Discogs (if a token is configured) → Deezer
+    → Wikipedia → Last.fm. Deezer, like MusicBrainz/iTunes, needs no API key.
   - `AlbumArtThread` — cover art via the Cover Art Archive, keyed by MusicBrainz release ID, falling
     back to the iTunes artwork URL (from `TrackLookupThread`) when MusicBrainz found no release or
-    the Cover Art Archive has no cover on file for it.
+    the Cover Art Archive has no cover on file for it, and finally to a Deezer track search (by
+    artist/title, also from `TrackLookupThread`'s result) when both of those miss.
 - **Dialogs** (`QDialog` subclasses) — `TrackInfoDialog`, `LastfmSettingsDialog` /
   `DiscogsSettingsDialog` (each with a "Test" button that validates the key/token before saving),
   `EditStationDialog`, `StationListDialog`.
