@@ -22,7 +22,7 @@ Built with [PySide6](https://doc.qt.io/qtforpython/) (Qt for Python), so it auto
 - 🖼️ Artist photos (Discogs → Wikipedia → Last.fm) and album cover art (Cover Art Archive)
 - 🔔 Native desktop notifications when a new station or track starts playing (toggleable)
 - 🔊 Output device selector, with automatic refresh when devices change
-- 🗔 Minimizes to the system tray instead of closing; tray menu for quick play/pause/stop/quit
+- 🗔 Closing the window asks whether to quit or keep running in the system tray; tray menu for quick play/pause/stop/quit
 - 🎨 Zero custom theming — inherits your system's Qt palette and icons on both Linux and Windows
 
 ## Requirements
@@ -69,7 +69,7 @@ chmod +x radiotop_gui.py
 ./radiotop_gui.py
 ```
 
-Use the **Stations** menu to pick a station to play, or choose **Manage Stations...** to search existing stations, edit them, or paste a stream URL to add and play a new one. Closing the main window minimizes RadioTop to the system tray — use the tray menu or **File → Quit** to actually exit.
+Use the **Stations** menu to pick a station to play, or choose **Manage Stations...** to search existing stations, edit them, or paste a stream URL to add and play a new one. Closing the main window asks whether to quit RadioTop or keep it running in the system tray; the tray menu or **File → Quit** always exits directly without asking.
 
 ## Optional API keys
 

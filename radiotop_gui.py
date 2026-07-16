@@ -28,8 +28,9 @@ Notes:
 - Custom stations you add are remembered between runs (via QSettings,
   which uses an INI-style config file on Linux and the Registry on
   Windows).
-- Closing the window minimizes RadioTop to the system tray; use the tray
-  menu or File > Quit to actually exit.
+- Closing the window prompts to either quit RadioTop or keep it running
+  in the system tray; the tray menu or File > Quit always exits directly
+  without prompting.
 """
 
 import json
@@ -2306,14 +2307,31 @@ class MainWindow(QMainWindow):
         if self._quitting or not self.tray.isVisible():
             event.accept()
             return
-        event.ignore()
-        self.hide()
-        self.tray.showMessage(
-            "RadioTop",
-            "Still running in the tray. Right-click the tray icon to quit.",
-            QSystemTrayIcon.MessageIcon.Information,
-            3000,
-        )
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Close RadioTop")
+        msg.setText("Do you want to quit RadioTop, or keep it running in the background?")
+        quit_btn = msg.addButton("Quit", QMessageBox.ButtonRole.DestructiveRole)
+        tray_btn = msg.addButton("Minimize to Tray", QMessageBox.ButtonRole.AcceptRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(tray_btn)
+        msg.exec()
+        clicked = msg.clickedButton()
+
+        if clicked is quit_btn:
+            event.accept()
+            self.quit_app()
+        elif clicked is tray_btn:
+            event.ignore()
+            self.hide()
+            self.tray.showMessage(
+                "RadioTop",
+                "Still running in the tray. Right-click the tray icon to quit.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000,
+            )
+        else:
+            event.ignore()  # Cancel - leave the window open
 
 
 def main():
