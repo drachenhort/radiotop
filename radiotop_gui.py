@@ -360,7 +360,57 @@ class IcyMetadataThread(QThread):
                 pass
 
 
-class TrackLookupThread(QThread):
+class _CancellableRequestThread(QThread):
+    """QThread base for threads that make one or more sequential blocking
+    urlopen() calls. Provides the same cooperative-shutdown mechanism as
+    IcyMetadataThread.stop(): closing the response wrapper alone doesn't
+    reliably interrupt a blocking read happening on another thread, so
+    stop() shuts down the underlying socket directly. This lets callers
+    wait briefly for a graceful exit instead of reaching for
+    QThread.terminate(), which can kill the thread mid-syscall and leave a
+    socket or lock in a bad state."""
+
+    def __init__(self):
+        super().__init__()
+        self._stop_event = threading.Event()
+        self._resp = None
+        self._resp_lock = threading.Lock()
+
+    def _urlopen(self, req, timeout=10):
+        """Drop-in replacement for urllib.request.urlopen() that registers
+        the response so stop() can interrupt it, and returns None instead
+        of opening the connection at all if stop() was already called."""
+        if self._stop_event.is_set():
+            return None
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        with self._resp_lock:
+            if self._stop_event.is_set():
+                resp.close()
+                return None
+            self._resp = resp
+        return resp
+
+    def _release(self, resp):
+        with self._resp_lock:
+            if self._resp is resp:
+                self._resp = None
+
+    def stop(self):
+        self._stop_event.set()
+        with self._resp_lock:
+            resp = self._resp
+        if resp is not None:
+            try:
+                resp.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                resp.close()
+            except Exception:
+                pass
+
+
+class TrackLookupThread(_CancellableRequestThread):
     """Looks up genre / release year / album for a 'now playing' title.
 
     Release year and album come from MusicBrainz (the open metadata
@@ -404,8 +454,13 @@ class TrackLookupThread(QThread):
         })
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.MB_USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -462,8 +517,13 @@ class TrackLookupThread(QThread):
         })
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None, None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except urllib.error.HTTPError as e:
             return None, f"Last.fm HTTP error {e.code}"
         except Exception as e:
@@ -494,8 +554,13 @@ class TrackLookupThread(QThread):
         })
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -529,8 +594,14 @@ class TrackLookupThread(QThread):
             return
 
         mb = self._query_musicbrainz(artist, title)
+        if self._stop_event.is_set():
+            return
         lfm, lfm_error = self._query_lastfm(artist, title)
+        if self._stop_event.is_set():
+            return
         itunes = self._query_itunes(artist, title)
+        if self._stop_event.is_set():
+            return
 
         if mb is None and lfm is None and itunes is None:
             self.result_ready.emit({
@@ -575,7 +646,7 @@ class TrackLookupThread(QThread):
         })
 
 
-class ArtistImageThread(QThread):
+class ArtistImageThread(_CancellableRequestThread):
     """Fetches a picture of the current artist/band. Tries sources in order
     of typical photo quality/coverage: Discogs first (if a token is
     configured), then Wikipedia, then Last.fm as a last resort.
@@ -606,11 +677,13 @@ class ArtistImageThread(QThread):
         image_bytes = None
         if self.discogs_token:
             image_bytes = self._fetch_from_discogs()
-        if image_bytes is None:
+        if image_bytes is None and not self._stop_event.is_set():
             image_bytes = self._fetch_from_wikipedia()
-        if image_bytes is None and self.lastfm_api_key:
+        if image_bytes is None and self.lastfm_api_key and not self._stop_event.is_set():
             image_bytes = self._fetch_from_lastfm()
 
+        if self._stop_event.is_set():
+            return
         if image_bytes is None:
             self.not_found.emit()
             return
@@ -630,8 +703,13 @@ class ArtistImageThread(QThread):
         })
         try:
             req = urllib.request.Request(search_url, headers=self._discogs_headers())
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -646,8 +724,13 @@ class ArtistImageThread(QThread):
                 artist_req = urllib.request.Request(
                     f"{self.DISCOGS_ENDPOINT}/artists/{artist_id}", headers=self._discogs_headers()
                 )
-                artist_resp = urllib.request.urlopen(artist_req, timeout=10)
-                artist_data = json.loads(artist_resp.read().decode("utf-8"))
+                artist_resp = self._urlopen(artist_req, timeout=10)
+                if artist_resp is None:
+                    return None
+                try:
+                    artist_data = json.loads(artist_resp.read().decode("utf-8"))
+                finally:
+                    self._release(artist_resp)
             except Exception:
                 artist_data = {}
             images = artist_data.get("images") or []
@@ -665,8 +748,13 @@ class ArtistImageThread(QThread):
 
         try:
             img_req = urllib.request.Request(image_url, headers=self._discogs_headers())
-            img_resp = urllib.request.urlopen(img_req, timeout=10)
-            return img_resp.read()
+            img_resp = self._urlopen(img_req, timeout=10)
+            if img_resp is None:
+                return None
+            try:
+                return img_resp.read()
+            finally:
+                self._release(img_resp)
         except Exception:
             return None
 
@@ -680,8 +768,13 @@ class ArtistImageThread(QThread):
         })
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -704,8 +797,13 @@ class ArtistImageThread(QThread):
 
         try:
             img_req = urllib.request.Request(image_url, headers={"User-Agent": self.USER_AGENT})
-            img_resp = urllib.request.urlopen(img_req, timeout=10)
-            return img_resp.read()
+            img_resp = self._urlopen(img_req, timeout=10)
+            if img_resp is None:
+                return None
+            try:
+                return img_resp.read()
+            finally:
+                self._release(img_resp)
         except Exception:
             return None
 
@@ -714,8 +812,13 @@ class ArtistImageThread(QThread):
         summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + quote(title)
         try:
             req = urllib.request.Request(summary_url, headers={"User-Agent": self.USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -726,13 +829,18 @@ class ArtistImageThread(QThread):
 
         try:
             img_req = urllib.request.Request(image_url, headers={"User-Agent": self.USER_AGENT})
-            img_resp = urllib.request.urlopen(img_req, timeout=10)
-            return img_resp.read()
+            img_resp = self._urlopen(img_req, timeout=10)
+            if img_resp is None:
+                return None
+            try:
+                return img_resp.read()
+            finally:
+                self._release(img_resp)
         except Exception:
             return None
 
 
-class AlbumArtThread(QThread):
+class AlbumArtThread(_CancellableRequestThread):
     """Fetches the album cover, preferring the Cover Art Archive, keyed by
     the MusicBrainz release ID (no key required) - ID-based, so it's more
     reliable than a name search. Falls back to the artwork URL returned by
@@ -753,16 +861,26 @@ class AlbumArtThread(QThread):
         url = f"https://coverartarchive.org/release/{self.release_mbid}/front-500"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=10)
-            return resp.read()
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                return resp.read()
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
     def _fetch_from_itunes(self):
         try:
             req = urllib.request.Request(self.itunes_artwork_url, headers={"User-Agent": self.USER_AGENT})
-            resp = urllib.request.urlopen(req, timeout=10)
-            return resp.read()
+            resp = self._urlopen(req, timeout=10)
+            if resp is None:
+                return None
+            try:
+                return resp.read()
+            finally:
+                self._release(resp)
         except Exception:
             return None
 
@@ -770,9 +888,11 @@ class AlbumArtThread(QThread):
         image_bytes = None
         if self.release_mbid:
             image_bytes = self._fetch_from_cover_art_archive()
-        if image_bytes is None and self.itunes_artwork_url:
+        if image_bytes is None and self.itunes_artwork_url and not self._stop_event.is_set():
             image_bytes = self._fetch_from_itunes()
 
+        if self._stop_event.is_set():
+            return
         if image_bytes is None:
             self.not_found.emit()
             return
@@ -1764,8 +1884,16 @@ class MainWindow(QMainWindow):
             pass
         try:
             if thread.isRunning():
-                thread.terminate()
-                thread.wait(500)
+                # stop() interrupts any in-flight request by shutting down
+                # its socket directly, so this wait usually returns almost
+                # immediately rather than blocking for the full timeout -
+                # terminate() can kill the thread mid-syscall, leaving a
+                # socket or lock in a bad state, so it's only a last resort.
+                thread.stop()
+                thread.wait(1500)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
         except RuntimeError:
             pass  # underlying C++ object was already deleted - nothing to do
 
@@ -1865,8 +1993,16 @@ class MainWindow(QMainWindow):
                 pass
         try:
             if thread.isRunning():
-                thread.terminate()
-                thread.wait(500)
+                # stop() interrupts any in-flight request by shutting down
+                # its socket directly, so this wait usually returns almost
+                # immediately rather than blocking for the full timeout -
+                # terminate() can kill the thread mid-syscall, leaving a
+                # socket or lock in a bad state, so it's only a last resort.
+                thread.stop()
+                thread.wait(1500)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
         except RuntimeError:
             pass  # underlying C++ object was already deleted - nothing to do
 
@@ -1961,8 +2097,16 @@ class MainWindow(QMainWindow):
                 pass
         try:
             if thread.isRunning():
-                thread.terminate()
-                thread.wait(500)
+                # stop() interrupts any in-flight request by shutting down
+                # its socket directly, so this wait usually returns almost
+                # immediately rather than blocking for the full timeout -
+                # terminate() can kill the thread mid-syscall, leaving a
+                # socket or lock in a bad state, so it's only a last resort.
+                thread.stop()
+                thread.wait(1500)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
         except RuntimeError:
             pass  # underlying C++ object was already deleted - nothing to do
 
