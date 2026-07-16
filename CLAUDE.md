@@ -89,18 +89,22 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
     back to the iTunes artwork URL (from `TrackLookupThread`) when MusicBrainz found no release or
     the Cover Art Archive has no cover on file for it, and finally to a Deezer track search (by
     artist/title, also from `TrackLookupThread`'s result) when both of those miss.
-- **Dialogs** (`QDialog` subclasses) — `TrackInfoDialog`, `LastfmSettingsDialog` /
-  `DiscogsSettingsDialog` (each with a "Test" button that validates the key/token before saving),
-  `EditStationDialog`, `StationListDialog`.
+  - `SimilarTracksThread` — a short "similar tracks" list for the `TrackInfoDialog`, sourced from
+    Deezer (no key needed): resolves the current track to a Deezer artist ID via search, then uses
+    that artist's Deezer "radio" (smart mix) as the pool, optionally widened with a few top tracks
+    from related artists if `Settings > Widen Similar Tracks` is enabled.
+- **Dialogs** (`QDialog` subclasses) — `TrackInfoDialog` (also shows the `SimilarTracksThread`
+  results), `LastfmSettingsDialog` / `DiscogsSettingsDialog` (each with a "Test" button that
+  validates the key/token before saving), `EditStationDialog`, `StationListDialog`.
 - **`MainWindow`** — the main window, system tray integration, and the glue that owns the media
-  player, wires thread signals to UI updates, and manages a cache for each of the three lookup
-  threads (`lookup_cache`, `artist_image_cache`, `album_art_cache`) so repeat lookups for the same
-  track/artist/release don't re-hit the network.
+  player, wires thread signals to UI updates, and manages a cache for each of the four lookup
+  threads (`lookup_cache`, `artist_image_cache`, `album_art_cache`, `similar_tracks_cache`) so repeat
+  lookups for the same track/artist/release don't re-hit the network.
 
 ## Persistence
 
-All persistent state (custom stations, volume, output device, notification toggle, Last.fm/Discogs
-credentials) goes through `QSettings(APP_ORG, APP_NAME)` — an INI file at
+All persistent state (custom stations, volume, output device, notification toggle, similar-tracks
+widen toggle, Last.fm/Discogs credentials) goes through `QSettings(APP_ORG, APP_NAME)` — an INI file at
 `~/.config/radiotop/RadioTop.conf` on Linux, or the registry
 (`HKEY_CURRENT_USER\Software\radiotop\RadioTop`) on Windows. There is no separate config file format
 to maintain; add new persisted fields as additional `QSettings` keys read/written directly where

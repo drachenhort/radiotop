@@ -78,3 +78,35 @@ def test_apply_lookup_missing_fields_show_placeholder(qapp):
     assert dlg.album_label.text() == "Album: -"
     assert dlg.genre_value.text() == "-"
     assert dlg.year_value.text() == "-"
+
+
+def test_set_similar_tracks_loading_shows_placeholder(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_similar_tracks_loading()
+    assert dlg.similar_list.count() == 1
+    assert dlg.similar_list.item(0).text() == "Loading..."
+
+
+def test_set_similar_tracks_populates_list(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_similar_tracks([
+        {"title": "Kid A", "artist": "Radiohead"},
+        {"title": "Grace", "artist": "Jeff Buckley"},
+    ])
+    assert dlg.similar_list.count() == 2
+    assert dlg.similar_list.item(0).text() == "Kid A — Radiohead"
+    assert dlg.similar_list.item(1).text() == "Grace — Jeff Buckley"
+
+
+def test_set_similar_tracks_empty_shows_placeholder(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_similar_tracks([])
+    assert dlg.similar_list.count() == 1
+    assert dlg.similar_list.item(0).text() == "No similar tracks found."
+
+
+def test_set_waiting_clears_similar_tracks(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_similar_tracks([{"title": "Kid A", "artist": "Radiohead"}])
+    dlg.set_waiting()
+    assert dlg.similar_list.count() == 0

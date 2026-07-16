@@ -49,6 +49,7 @@ from PySide6.QtCore import Qt, QUrl, Signal, QThread, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QFont, QIcon, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QComboBox,
     QDialog,
@@ -953,6 +954,101 @@ class AlbumArtThread(_CancellableRequestThread):
         self.image_ready.emit(image_bytes)
 
 
+class SimilarTracksThread(_CancellableRequestThread):
+    """Fetches a short "similar tracks" list from Deezer for the current
+    track's artist. Deezer has no "similar tracks by track ID" endpoint, so
+    this resolves the track to a Deezer artist ID via search, then uses
+    that artist's Deezer "radio" (smart mix) as the similar-tracks pool -
+    optionally widened with a few top tracks from a couple of related
+    artists, since an artist's own radio mix leans heavily on that same
+    artist and can otherwise look repetitive."""
+
+    results_ready = Signal(list)
+
+    DEEZER_ENDPOINT = "https://api.deezer.com"
+    MAX_TRACKS = 15
+    RELATED_ARTIST_LIMIT = 2
+    TRACKS_PER_RELATED_ARTIST = 3
+
+    def __init__(self, artist_name, track_title, widen=False):
+        super().__init__()
+        self.artist_name = artist_name
+        self.track_title = track_title
+        self.widen = widen
+
+    def _get_json(self, url):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_json(req)
+        except Exception:
+            return None
+
+    def _resolve_artist_id(self):
+        query = f'artist:"{self.artist_name}" track:"{self.track_title}"'
+        url = self.DEEZER_ENDPOINT + "/search?" + urlencode({"q": query, "limit": 1})
+        data = self._get_json(url)
+        if not data:
+            return None
+        results = data.get("data") or []
+        if not results:
+            return None
+        return (results[0].get("artist") or {}).get("id")
+
+    def _fetch_artist_radio(self, artist_id):
+        data = self._get_json(f"{self.DEEZER_ENDPOINT}/artist/{artist_id}/radio")
+        return (data or {}).get("data") or []
+
+    def _fetch_related_artist_ids(self, artist_id):
+        data = self._get_json(f"{self.DEEZER_ENDPOINT}/artist/{artist_id}/related")
+        related = (data or {}).get("data") or []
+        return [a["id"] for a in related[: self.RELATED_ARTIST_LIMIT] if a.get("id")]
+
+    def _fetch_artist_top_tracks(self, artist_id):
+        url = f"{self.DEEZER_ENDPOINT}/artist/{artist_id}/top?" + urlencode({
+            "limit": self.TRACKS_PER_RELATED_ARTIST,
+        })
+        data = self._get_json(url)
+        return (data or {}).get("data") or []
+
+    @staticmethod
+    def _to_result(track):
+        return {
+            "title": track.get("title", ""),
+            "artist": (track.get("artist") or {}).get("name", ""),
+        }
+
+    def run(self):
+        artist_id = self._resolve_artist_id()
+        if not artist_id or self._stop_event.is_set():
+            self.results_ready.emit([])
+            return
+
+        tracks = self._fetch_artist_radio(artist_id)
+
+        if self.widen:
+            for related_id in self._fetch_related_artist_ids(artist_id):
+                if self._stop_event.is_set():
+                    break
+                tracks += self._fetch_artist_top_tracks(related_id)
+
+        if self._stop_event.is_set():
+            return
+
+        seen = set()
+        results = []
+        for track in tracks:
+            result = self._to_result(track)
+            key = (result["title"], result["artist"])
+            if not result["title"] or key in seen:
+                continue
+            seen.add(key)
+            results.append(result)
+            if len(results) >= self.MAX_TRACKS:
+                break
+
+        self.results_ready.emit(results)
+
+
 class TrackInfoDialog(QDialog):
     """A small non-modal window showing details about the currently
     playing track: title, artist, album, genre, and release year."""
@@ -960,11 +1056,12 @@ class TrackInfoDialog(QDialog):
     ALBUM_LENGTH_THRESHOLD = 28  # chars past which the dialog widens for the album name
     DEFAULT_WIDTH = 380
     WIDE_WIDTH = 560
+    SIMILAR_LIST_HEIGHT = 110
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Track Info")
-        self.resize(self.DEFAULT_WIDTH, 240)
+        self.resize(self.DEFAULT_WIDTH, 340)
 
         layout = QVBoxLayout(self)
 
@@ -1004,6 +1101,15 @@ class TrackInfoDialog(QDialog):
         self.status_label.setStyleSheet("color: #888888; font-style: italic;")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("Similar Tracks:"))
+        self.similar_list = QListWidget()
+        self.similar_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.similar_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.similar_list.setMaximumHeight(self.SIMILAR_LIST_HEIGHT)
+        layout.addWidget(self.similar_list)
+
         layout.addStretch(1)
 
     def _reset_width(self):
@@ -1018,6 +1124,7 @@ class TrackInfoDialog(QDialog):
         self.genre_value.setText("-")
         self.year_value.setText("-")
         self.status_label.setText("")
+        self.similar_list.clear()
         self._reset_width()
 
     def set_no_track(self):
@@ -1027,6 +1134,7 @@ class TrackInfoDialog(QDialog):
         self.genre_value.setText("-")
         self.year_value.setText("-")
         self.status_label.setText("")
+        self.similar_list.clear()
         self._reset_width()
 
     def set_now_playing(self, raw_title):
@@ -1036,7 +1144,29 @@ class TrackInfoDialog(QDialog):
         self.genre_value.setText("-")
         self.year_value.setText("-")
         self.status_label.setText("Looking up track details...")
+        self.similar_list.clear()
         self._reset_width()
+
+    def set_similar_tracks_loading(self):
+        self.similar_list.clear()
+        item = QListWidgetItem("Loading...")
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        self.similar_list.addItem(item)
+
+    def set_similar_tracks(self, tracks):
+        self.similar_list.clear()
+        if not tracks:
+            item = QListWidgetItem("No similar tracks found.")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.similar_list.addItem(item)
+            return
+        for track in tracks:
+            title = track.get("title", "")
+            artist = track.get("artist", "")
+            text = f"{title} — {artist}" if artist else title
+            item = QListWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.similar_list.addItem(item)
 
     def apply_lookup(self, result):
         if not result.get("found"):
@@ -1464,8 +1594,12 @@ class MainWindow(QMainWindow):
         self.album_art_thread = None
         self.album_art_cache = {}
         self.last_album_key = None
+        self.similar_tracks_thread = None
+        self.similar_tracks_cache = {}
+        self.last_similar_tracks_artist = None
         self.lastfm_api_key = self.settings.value("lastfm_api_key", "") or ""
         self.discogs_token = self.settings.value("discogs_token", "") or ""
+        self.similar_tracks_widen = self.settings.value("similar_tracks_widen", False, type=bool)
         self.notifications_enabled = self.settings.value("show_notifications", True, type=bool)
         self._pending_notification_artist = None
         self._pending_notification_body = None
@@ -1668,6 +1802,12 @@ class MainWindow(QMainWindow):
         self.notifications_action.toggled.connect(self._on_notifications_toggled)
         settings_menu.addAction(self.notifications_action)
 
+        self.similar_tracks_widen_action = QAction("&Widen Similar Tracks (Related Artists)", self)
+        self.similar_tracks_widen_action.setCheckable(True)
+        self.similar_tracks_widen_action.setChecked(self.similar_tracks_widen)
+        self.similar_tracks_widen_action.toggled.connect(self._on_similar_tracks_widen_toggled)
+        settings_menu.addAction(self.similar_tracks_widen_action)
+
         self.setStatusBar(QStatusBar())
 
     def _rebuild_stations_menu(self):
@@ -1749,6 +1889,8 @@ class MainWindow(QMainWindow):
         self.last_album_key = None
         self._stop_album_art_thread()
         self._set_album_art_placeholder("Waiting for track info...")
+        self.last_similar_tracks_artist = None
+        self._stop_similar_tracks_thread()
         self.statusBar().showMessage(f"Connecting to {station['name']}...", 4000)
         self.station_dialog.refresh_list()
         self._rebuild_stations_menu()
@@ -1907,6 +2049,10 @@ class MainWindow(QMainWindow):
             self._fetch_album_art(release_mbid, itunes_artwork_url, track_artist, track_title)
         elif result.get("found"):
             self._set_album_art_placeholder("No cover art")
+        if track_artist and track_title:
+            self._fetch_similar_tracks(track_artist, track_title)
+        elif result.get("found"):
+            self.track_info_dialog.set_similar_tracks([])
 
     def _on_lookup_thread_finished(self):
         if self.sender() is self.lookup_thread:
@@ -2158,6 +2304,62 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             pass  # underlying C++ object was already deleted - nothing to do
 
+    # --------------------------------------------------- similar tracks ---
+    def _fetch_similar_tracks(self, artist_name, track_title):
+        artist_name = (artist_name or "").strip()
+        track_title = (track_title or "").strip()
+        if not artist_name or not track_title:
+            self.last_similar_tracks_artist = None
+            self._stop_similar_tracks_thread()
+            self.track_info_dialog.set_similar_tracks([])
+            return
+        if artist_name == self.last_similar_tracks_artist:
+            return  # already showing / fetching similar tracks for this artist
+        self.last_similar_tracks_artist = artist_name
+
+        if artist_name in self.similar_tracks_cache:
+            self.track_info_dialog.set_similar_tracks(self.similar_tracks_cache[artist_name])
+            return
+
+        self.track_info_dialog.set_similar_tracks_loading()
+        self._stop_similar_tracks_thread()
+        self.similar_tracks_thread = SimilarTracksThread(artist_name, track_title, self.similar_tracks_widen)
+        self.similar_tracks_thread.results_ready.connect(
+            lambda tracks, name=artist_name: self._on_similar_tracks_ready(name, tracks)
+        )
+        self.similar_tracks_thread.finished.connect(self._on_similar_tracks_thread_finished)
+        self.similar_tracks_thread.finished.connect(self.similar_tracks_thread.deleteLater)
+        self.similar_tracks_thread.start()
+
+    def _on_similar_tracks_ready(self, artist_name, tracks):
+        self.similar_tracks_cache[artist_name] = tracks
+        if artist_name == self.last_similar_tracks_artist:
+            self.track_info_dialog.set_similar_tracks(tracks)
+
+    def _on_similar_tracks_thread_finished(self):
+        if self.sender() is self.similar_tracks_thread:
+            self.similar_tracks_thread = None
+
+    def _stop_similar_tracks_thread(self):
+        thread = self.similar_tracks_thread
+        self.similar_tracks_thread = None
+        if thread is None:
+            return
+        for signal_name in ("results_ready", "finished"):
+            try:
+                getattr(thread, signal_name).disconnect()
+            except (TypeError, RuntimeError):
+                pass
+        try:
+            if thread.isRunning():
+                thread.stop()
+                thread.wait(1500)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
+        except RuntimeError:
+            pass  # underlying C++ object was already deleted - nothing to do
+
     def _configure_lastfm_key(self):
         dlg = LastfmSettingsDialog(self.lastfm_api_key, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -2186,6 +2388,11 @@ class MainWindow(QMainWindow):
     def _on_notifications_toggled(self, checked):
         self.notifications_enabled = checked
         self.settings.setValue("show_notifications", checked)
+
+    def _on_similar_tracks_widen_toggled(self, checked):
+        self.similar_tracks_widen = checked
+        self.settings.setValue("similar_tracks_widen", checked)
+        self.similar_tracks_cache.clear()
 
     def _show_notification(self, title, body, icon=None):
         if not self.notifications_enabled:
@@ -2231,6 +2438,8 @@ class MainWindow(QMainWindow):
         self._stop_album_art_thread()
         self.last_album_key = None
         self._set_album_art_placeholder("No image")
+        self._stop_similar_tracks_thread()
+        self.last_similar_tracks_artist = None
         self.name_label.setText("Nothing playing")
         self.track_label.setText("")
         self.track_info_dialog.set_no_track()
@@ -2386,6 +2595,7 @@ class MainWindow(QMainWindow):
         self._stop_lookup_thread()
         self._stop_artist_image_thread()
         self._stop_album_art_thread()
+        self._stop_similar_tracks_thread()
         self.player.stop()
         if self.stream_proxy is not None:
             self.stream_proxy.shutdown()
