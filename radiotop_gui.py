@@ -89,6 +89,13 @@ TITLE_RE = re.compile(rb"StreamTitle='([^']*)';")
 
 RADIOTOP_USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
 
+
+def _fetch_json(req, timeout=10):
+    """Request -> urlopen -> JSON-decode, the exact sequence repeated by
+    nearly every network call in this file."""
+    resp = urllib.request.urlopen(req, timeout=timeout)
+    return json.loads(resp.read().decode("utf-8"))
+
 # Many Shoutcast/Icecast stations only respond correctly if the stream
 # address includes an explicit port and a mountpoint/filename - a bare
 # "http://host/" often just hangs or errors. Port 7700 is the standard
@@ -405,6 +412,28 @@ class _CancellableRequestThread(QThread):
         with self._resp_lock:
             self._open_resps.discard(resp)
 
+    def _fetch_json(self, req, timeout=10):
+        """_urlopen() + read + JSON-decode + release, bundled since this
+        exact sequence repeats across nearly every network call below.
+        Returns None if stop() was already called."""
+        resp = self._urlopen(req, timeout=timeout)
+        if resp is None:
+            return None
+        try:
+            return json.loads(resp.read().decode("utf-8"))
+        finally:
+            self._release(resp)
+
+    def _fetch_bytes(self, req, timeout=10):
+        """Same as _fetch_json(), but for raw responses (image downloads)."""
+        resp = self._urlopen(req, timeout=timeout)
+        if resp is None:
+            return None
+        try:
+            return resp.read()
+        finally:
+            self._release(resp)
+
     def stop(self):
         self._stop_event.set()
         with self._resp_lock:
@@ -434,7 +463,6 @@ class TrackLookupThread(_CancellableRequestThread):
 
     result_ready = Signal(dict)
 
-    MB_USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
     LASTFM_ENDPOINT = "https://ws.audioscrobbler.com/2.0/"
     ITUNES_ENDPOINT = "https://itunes.apple.com/search"
 
@@ -463,14 +491,10 @@ class TrackLookupThread(_CancellableRequestThread):
             "inc": "genres+tags",
         })
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": self.MB_USER_AGENT})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
                 return None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except Exception:
             return None
 
@@ -526,14 +550,10 @@ class TrackLookupThread(_CancellableRequestThread):
             "autocorrect": 1,
         })
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
                 return None, None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except urllib.error.HTTPError as e:
             return None, f"Last.fm HTTP error {e.code}"
         except Exception as e:
@@ -563,14 +583,10 @@ class TrackLookupThread(_CancellableRequestThread):
             "limit": 1,
         })
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
                 return None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except Exception:
             return None
 
@@ -675,7 +691,6 @@ class ArtistImageThread(_CancellableRequestThread):
     image_ready = Signal(bytes)
     not_found = Signal()
 
-    USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
     LASTFM_ENDPOINT = "https://ws.audioscrobbler.com/2.0/"
     DISCOGS_ENDPOINT = "https://api.discogs.com"
     # Hash Last.fm uses for its "no image available" placeholder graphic.
@@ -706,7 +721,7 @@ class ArtistImageThread(_CancellableRequestThread):
 
     def _discogs_headers(self):
         return {
-            "User-Agent": self.USER_AGENT,
+            "User-Agent": RADIOTOP_USER_AGENT,
             "Authorization": f"Discogs token={self.discogs_token}",
         }
 
@@ -718,13 +733,9 @@ class ArtistImageThread(_CancellableRequestThread):
         })
         try:
             req = urllib.request.Request(search_url, headers=self._discogs_headers())
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            data = self._fetch_json(req)
+            if data is None:
                 return None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except Exception:
             return None
 
@@ -739,13 +750,9 @@ class ArtistImageThread(_CancellableRequestThread):
                 artist_req = urllib.request.Request(
                     f"{self.DISCOGS_ENDPOINT}/artists/{artist_id}", headers=self._discogs_headers()
                 )
-                artist_resp = self._urlopen(artist_req, timeout=10)
-                if artist_resp is None:
+                artist_data = self._fetch_json(artist_req)
+                if artist_data is None:
                     return None
-                try:
-                    artist_data = json.loads(artist_resp.read().decode("utf-8"))
-                finally:
-                    self._release(artist_resp)
             except Exception:
                 artist_data = {}
             images = artist_data.get("images") or []
@@ -763,13 +770,7 @@ class ArtistImageThread(_CancellableRequestThread):
 
         try:
             img_req = urllib.request.Request(image_url, headers=self._discogs_headers())
-            img_resp = self._urlopen(img_req, timeout=10)
-            if img_resp is None:
-                return None
-            try:
-                return img_resp.read()
-            finally:
-                self._release(img_resp)
+            return self._fetch_bytes(img_req)
         except Exception:
             return None
 
@@ -782,14 +783,10 @@ class ArtistImageThread(_CancellableRequestThread):
             "autocorrect": 1,
         })
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
                 return None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except Exception:
             return None
 
@@ -811,14 +808,8 @@ class ArtistImageThread(_CancellableRequestThread):
             return None
 
         try:
-            img_req = urllib.request.Request(image_url, headers={"User-Agent": self.USER_AGENT})
-            img_resp = self._urlopen(img_req, timeout=10)
-            if img_resp is None:
-                return None
-            try:
-                return img_resp.read()
-            finally:
-                self._release(img_resp)
+            img_req = urllib.request.Request(image_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_bytes(img_req)
         except Exception:
             return None
 
@@ -826,14 +817,10 @@ class ArtistImageThread(_CancellableRequestThread):
         title = self.artist_name.strip().replace(" ", "_")
         summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + quote(title)
         try:
-            req = urllib.request.Request(summary_url, headers={"User-Agent": self.USER_AGENT})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
+            req = urllib.request.Request(summary_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = self._fetch_json(req)
+            if data is None:
                 return None
-            try:
-                data = json.loads(resp.read().decode("utf-8"))
-            finally:
-                self._release(resp)
         except Exception:
             return None
 
@@ -843,14 +830,8 @@ class ArtistImageThread(_CancellableRequestThread):
             return None
 
         try:
-            img_req = urllib.request.Request(image_url, headers={"User-Agent": self.USER_AGENT})
-            img_resp = self._urlopen(img_req, timeout=10)
-            if img_resp is None:
-                return None
-            try:
-                return img_resp.read()
-            finally:
-                self._release(img_resp)
+            img_req = urllib.request.Request(image_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_bytes(img_req)
         except Exception:
             return None
 
@@ -865,8 +846,6 @@ class AlbumArtThread(_CancellableRequestThread):
     image_ready = Signal(bytes)
     not_found = Signal()
 
-    USER_AGENT = "RadioTop/1.0 ( https://github.com/example/radiotop )"
-
     def __init__(self, release_mbid, itunes_artwork_url=""):
         super().__init__()
         self.release_mbid = release_mbid
@@ -875,27 +854,15 @@ class AlbumArtThread(_CancellableRequestThread):
     def _fetch_from_cover_art_archive(self):
         url = f"https://coverartarchive.org/release/{self.release_mbid}/front-500"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
-                return None
-            try:
-                return resp.read()
-            finally:
-                self._release(resp)
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_bytes(req)
         except Exception:
             return None
 
     def _fetch_from_itunes(self):
         try:
-            req = urllib.request.Request(self.itunes_artwork_url, headers={"User-Agent": self.USER_AGENT})
-            resp = self._urlopen(req, timeout=10)
-            if resp is None:
-                return None
-            try:
-                return resp.read()
-            finally:
-                self._release(resp)
+            req = urllib.request.Request(self.itunes_artwork_url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            return self._fetch_bytes(req)
         except Exception:
             return None
 
@@ -1026,33 +993,36 @@ class TrackInfoDialog(QDialog):
         self.status_label.setText("   |   ".join(status_parts))
 
 
-class LastfmSettingsDialog(QDialog):
-    """Small dialog for entering/updating the user's Last.fm API key."""
+class _ApiCredentialDialog(QDialog):
+    """Shared UI for a dialog that collects a single API key/token: an
+    info blurb, a line edit with a "Test" button, a result label, and
+    OK/Cancel. Subclasses supply the window chrome via class attributes
+    and the actual validation call via _check()."""
 
-    def __init__(self, current_key, parent=None):
+    WINDOW_TITLE = ""
+    WINDOW_SIZE = (400, 200)
+    INFO_TEXT = ""
+    PLACEHOLDER = ""
+    EMPTY_MESSAGE = "Enter a value first."
+
+    def __init__(self, current_value, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Last.fm API Key")
-        self.resize(400, 200)
+        self.setWindowTitle(self.WINDOW_TITLE)
+        self.resize(*self.WINDOW_SIZE)
 
         layout = QVBoxLayout(self)
-        info = QLabel(
-            "Last.fm can supply richer, crowd-tagged genres for the "
-            "currently playing track (used alongside MusicBrainz, which "
-            "always supplies the release year). Get a free API key at "
-            "last.fm/api/account/create, then paste it below. Leave blank "
-            "to disable Last.fm and use MusicBrainz only."
-        )
+        info = QLabel(self.INFO_TEXT)
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        self.key_edit = QLineEdit(current_key)
-        self.key_edit.setPlaceholderText("Last.fm API key")
-        key_row = QHBoxLayout()
-        key_row.addWidget(self.key_edit, 1)
+        self.value_edit = QLineEdit(current_value)
+        self.value_edit.setPlaceholderText(self.PLACEHOLDER)
+        value_row = QHBoxLayout()
+        value_row.addWidget(self.value_edit, 1)
         test_btn = QPushButton("Test")
-        test_btn.clicked.connect(self._test_key)
-        key_row.addWidget(test_btn)
-        layout.addLayout(key_row)
+        test_btn.clicked.connect(self._test_value)
+        value_row.addWidget(test_btn)
+        layout.addLayout(value_row)
 
         self.result_label = QLabel("")
         self.result_label.setWordWrap(True)
@@ -1065,23 +1035,46 @@ class LastfmSettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def _test_key(self):
-        key = self.key_edit.text().strip()
-        if not key:
+    def _test_value(self):
+        value = self.value_edit.text().strip()
+        if not value:
             self.result_label.setStyleSheet("color: #f67400;")
-            self.result_label.setText("Enter a key first.")
+            self.result_label.setText(self.EMPTY_MESSAGE)
             return
         self.result_label.setStyleSheet("color: #888888;")
         self.result_label.setText("Testing...")
         QApplication.processEvents()
-        ok, message = self._check_key(key)
+        ok, message = self._check(value)
         self.result_label.setStyleSheet(
             "color: #3daee9;" if ok else "color: #da4453;"
         )
         self.result_label.setText(message)
 
+    def value(self):
+        return self.value_edit.text().strip()
+
     @staticmethod
-    def _check_key(key):
+    def _check(value):
+        raise NotImplementedError
+
+
+class LastfmSettingsDialog(_ApiCredentialDialog):
+    """Small dialog for entering/updating the user's Last.fm API key."""
+
+    WINDOW_TITLE = "Last.fm API Key"
+    WINDOW_SIZE = (400, 200)
+    INFO_TEXT = (
+        "Last.fm can supply richer, crowd-tagged genres for the "
+        "currently playing track (used alongside MusicBrainz, which "
+        "always supplies the release year). Get a free API key at "
+        "last.fm/api/account/create, then paste it below. Leave blank "
+        "to disable Last.fm and use MusicBrainz only."
+    )
+    PLACEHOLDER = "Last.fm API key"
+    EMPTY_MESSAGE = "Enter a key first."
+
+    @staticmethod
+    def _check(key):
         # auth.getToken is a lightweight read-only call - good for validating
         # a key without needing a real artist/track match.
         url = "https://ws.audioscrobbler.com/2.0/?" + urlencode({
@@ -1090,9 +1083,8 @@ class LastfmSettingsDialog(QDialog):
             "format": "json",
         })
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "RadioTop/1.0"})
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
+            data = _fetch_json(req)
         except urllib.error.HTTPError as e:
             return False, f"HTTP error {e.code} - key may be invalid."
         except Exception as e:
@@ -1101,77 +1093,39 @@ class LastfmSettingsDialog(QDialog):
             return False, data.get("message", f"Last.fm error {data.get('error')}")
         return True, "Key is valid."
 
+    _check_key = _check  # keep the historical name available too
+
     def api_key(self):
-        return self.key_edit.text().strip()
+        return self.value()
 
 
-class DiscogsSettingsDialog(QDialog):
+class DiscogsSettingsDialog(_ApiCredentialDialog):
     """Small dialog for entering/updating the user's Discogs API token."""
 
-    def __init__(self, current_token, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Discogs API Token")
-        self.resize(420, 220)
-
-        layout = QVBoxLayout(self)
-        info = QLabel(
-            "Discogs often has better artist photo coverage than Wikipedia, "
-            "especially for working musicians without a Wikipedia page. When "
-            "set, Discogs is tried first for artist photos, then Wikipedia, "
-            "then Last.fm. Get a free personal access token at "
-            "discogs.com/settings/developers, then paste it below. Leave "
-            "blank to disable Discogs."
-        )
-        info.setWordWrap(True)
-        layout.addWidget(info)
-
-        self.token_edit = QLineEdit(current_token)
-        self.token_edit.setPlaceholderText("Discogs personal access token")
-        token_row = QHBoxLayout()
-        token_row.addWidget(self.token_edit, 1)
-        test_btn = QPushButton("Test")
-        test_btn.clicked.connect(self._test_token)
-        token_row.addWidget(test_btn)
-        layout.addLayout(token_row)
-
-        self.result_label = QLabel("")
-        self.result_label.setWordWrap(True)
-        layout.addWidget(self.result_label)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def _test_token(self):
-        token = self.token_edit.text().strip()
-        if not token:
-            self.result_label.setStyleSheet("color: #f67400;")
-            self.result_label.setText("Enter a token first.")
-            return
-        self.result_label.setStyleSheet("color: #888888;")
-        self.result_label.setText("Testing...")
-        QApplication.processEvents()
-        ok, message = self._check_token(token)
-        self.result_label.setStyleSheet(
-            "color: #3daee9;" if ok else "color: #da4453;"
-        )
-        self.result_label.setText(message)
+    WINDOW_TITLE = "Discogs API Token"
+    WINDOW_SIZE = (420, 220)
+    INFO_TEXT = (
+        "Discogs often has better artist photo coverage than Wikipedia, "
+        "especially for working musicians without a Wikipedia page. When "
+        "set, Discogs is tried first for artist photos, then Wikipedia, "
+        "then Last.fm. Get a free personal access token at "
+        "discogs.com/settings/developers, then paste it below. Leave "
+        "blank to disable Discogs."
+    )
+    PLACEHOLDER = "Discogs personal access token"
+    EMPTY_MESSAGE = "Enter a token first."
 
     @staticmethod
-    def _check_token(token):
+    def _check(token):
         # oauth/identity is a lightweight authenticated call - good for
         # validating a token without needing a real search match.
         url = "https://api.discogs.com/oauth/identity"
         try:
             req = urllib.request.Request(url, headers={
-                "User-Agent": "RadioTop/1.0 ( https://github.com/example/radiotop )",
+                "User-Agent": RADIOTOP_USER_AGENT,
                 "Authorization": f"Discogs token={token}",
             })
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read().decode("utf-8"))
+            data = _fetch_json(req)
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 return False, "Invalid token."
@@ -1181,8 +1135,10 @@ class DiscogsSettingsDialog(QDialog):
         username = data.get("username", "")
         return True, f"Token is valid (authenticated as {username})." if username else "Token is valid."
 
+    _check_token = _check  # keep the historical name available too
+
     def token(self):
-        return self.token_edit.text().strip()
+        return self.value()
 
 
 class EditStationDialog(QDialog):
