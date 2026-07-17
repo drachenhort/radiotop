@@ -1713,10 +1713,12 @@ class MainWindow(QMainWindow):
         self.artist_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.artist_image_label.setWordWrap(True)
         artist_col.addWidget(self.artist_image_label)
-        artist_caption = QLabel("Artist")
-        artist_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        artist_caption.setStyleSheet("color: #888888; font-size: 10px;")
-        artist_col.addWidget(artist_caption)
+        self.artist_caption = QLabel("Artist")
+        self.artist_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.artist_caption.setWordWrap(True)
+        self.artist_caption.setFixedWidth(130)
+        self.artist_caption.setStyleSheet("color: #888888; font-size: 10px;")
+        artist_col.addWidget(self.artist_caption)
         image_row.addLayout(artist_col)
 
         image_row.addSpacing(14)
@@ -1727,10 +1729,12 @@ class MainWindow(QMainWindow):
         self.album_art_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.album_art_label.setWordWrap(True)
         album_col.addWidget(self.album_art_label)
-        album_caption = QLabel("Album")
-        album_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        album_caption.setStyleSheet("color: #888888; font-size: 10px;")
-        album_col.addWidget(album_caption)
+        self.album_caption = QLabel("Album")
+        self.album_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.album_caption.setWordWrap(True)
+        self.album_caption.setFixedWidth(130)
+        self.album_caption.setStyleSheet("color: #888888; font-size: 10px;")
+        album_col.addWidget(self.album_caption)
         image_row.addLayout(album_col)
 
         image_row.addStretch(1)
@@ -1900,9 +1904,11 @@ class MainWindow(QMainWindow):
         self.last_image_artist = None
         self._stop_artist_image_thread()
         self._set_artist_image_placeholder("Waiting for track info...")
+        self._set_artist_caption("")
         self.last_album_key = None
         self._stop_album_art_thread()
         self._set_album_art_placeholder("Waiting for track info...")
+        self._set_album_caption("")
         self.last_similar_tracks_artist = None
         self.last_similar_tracks_title = None
         self._stop_similar_tracks_thread()
@@ -2074,9 +2080,11 @@ class MainWindow(QMainWindow):
         itunes_artwork_url = result.get("itunes_artwork_url")
         track_artist = result.get("artist") or ""
         track_title = result.get("title") or ""
+        album_name = result.get("album") or ""
         if release_mbid or itunes_artwork_url or (track_artist and track_title):
-            self._fetch_album_art(release_mbid, itunes_artwork_url, track_artist, track_title)
+            self._fetch_album_art(release_mbid, itunes_artwork_url, track_artist, track_title, album_name)
         elif result.get("found"):
+            self._set_album_caption(album_name)
             self._set_album_art_placeholder("No cover art")
         if track_artist and track_title:
             self._fetch_similar_tracks(track_artist, track_title)
@@ -2137,13 +2145,18 @@ class MainWindow(QMainWindow):
         self.artist_image_label.setPixmap(scaled)
         self.artist_image_label.setStyleSheet("border: 1px solid #555; border-radius: 4px; background: #222;")
 
+    def _set_artist_caption(self, artist_name):
+        self.artist_caption.setText(artist_name or "Artist")
+
     def _fetch_artist_image(self, artist_name):
         artist_name = (artist_name or "").strip()
         if not artist_name:
             self.last_image_artist = None
             self._stop_artist_image_thread()
             self._set_artist_image_placeholder("No image")
+            self._set_artist_caption("")
             return
+        self._set_artist_caption(artist_name)
         if artist_name == self.last_image_artist:
             return  # already showing / fetching this artist
         self.last_image_artist = artist_name
@@ -2241,11 +2254,16 @@ class MainWindow(QMainWindow):
         self.album_art_label.setPixmap(scaled)
         self.album_art_label.setStyleSheet("border: 1px solid #555; border-radius: 4px; background: #222;")
 
-    def _fetch_album_art(self, release_mbid, itunes_artwork_url="", artist_name="", track_title=""):
+    def _set_album_caption(self, album_name):
+        self.album_caption.setText(album_name or "Album")
+
+    def _fetch_album_art(self, release_mbid, itunes_artwork_url="", artist_name="", track_title="", album_name=""):
         release_mbid = (release_mbid or "").strip()
         itunes_artwork_url = (itunes_artwork_url or "").strip()
         artist_name = (artist_name or "").strip()
         track_title = (track_title or "").strip()
+        album_name = (album_name or "").strip()
+        self._set_album_caption(album_name)
         # Cache/dedup key: prefer the MBID (stable, ID-based), then the
         # iTunes artwork URL, and finally the artist/title pair when neither
         # of those was available (Deezer-only lookup). The artist/title case
@@ -2482,9 +2500,11 @@ class MainWindow(QMainWindow):
         self._pending_notification_artist = None
         self.last_image_artist = None
         self._set_artist_image_placeholder("No image")
+        self._set_artist_caption("")
         self._stop_album_art_thread()
         self.last_album_key = None
         self._set_album_art_placeholder("No image")
+        self._set_album_caption("")
         self._stop_similar_tracks_thread()
         self.last_similar_tracks_artist = None
         self.last_similar_tracks_title = None
