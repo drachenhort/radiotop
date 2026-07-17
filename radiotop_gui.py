@@ -98,6 +98,18 @@ def _fetch_json(req, timeout=10):
     resp = urllib.request.urlopen(req, timeout=timeout)
     return json.loads(resp.read().decode("utf-8"))
 
+
+def _deezer_artist_track_query(artist_name, track_title):
+    """Builds a Deezer advanced-search query string (`artist:"..." track:"..."`)
+    for the given artist/title. Deezer's query syntax treats an unescaped `"`
+    as a field terminator, so a literal quote in either field (not uncommon in
+    track titles, e.g. `He Said "Yes"`) would otherwise truncate that field
+    and silently return the wrong (or no) result - stripped here rather than
+    escaped, since Deezer's search has no escape syntax for a quote."""
+    artist_name = artist_name.replace('"', "")
+    track_title = track_title.replace('"', "")
+    return f'artist:"{artist_name}" track:"{track_title}"'
+
 # Many Shoutcast/Icecast stations only respond correctly if the stream
 # address includes an explicit port and a mountpoint/filename - a bare
 # "http://host/" often just hangs or errors. Port 7700 is the standard
@@ -904,7 +916,7 @@ class AlbumArtThread(_CancellableRequestThread):
             return None
 
     def _fetch_from_deezer(self):
-        query = f'artist:"{self.artist_name}" track:"{self.track_title}"'
+        query = _deezer_artist_track_query(self.artist_name, self.track_title)
         url = self.DEEZER_ENDPOINT + "/search/track?" + urlencode({"q": query, "limit": 1})
         try:
             req = urllib.request.Request(url, headers={"User-Agent": RADIOTOP_USER_AGENT})
@@ -976,7 +988,7 @@ class SimilarTracksThread(_CancellableRequestThread):
             return None
 
     def _resolve_artist_id(self):
-        query = f'artist:"{self.artist_name}" track:"{self.track_title}"'
+        query = _deezer_artist_track_query(self.artist_name, self.track_title)
         url = self.DEEZER_ENDPOINT + "/search?" + urlencode({"q": query, "limit": 1})
         data = self._get_json(url)
         if not data:
@@ -1566,6 +1578,15 @@ class StationListDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    # Cap on each of the lookup/artist-image/album-art/similar-tracks caches
+    # below, evicting the oldest entry once a cache grows past this size.
+    # These caches otherwise have no TTL and are never cleared during a run
+    # (only ever added to or, for artist_image_cache/lookup_cache, wiped
+    # entirely when Last.fm/Discogs credentials change) - fine for a normal
+    # listening session, but this is meant to run 24/7 in the background, so
+    # without a bound each cache would grow for as long as the app stays open.
+    MAX_CACHE_ENTRIES = 300
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("RadioTop")
@@ -1589,6 +1610,7 @@ class MainWindow(QMainWindow):
         self.similar_tracks_thread = None
         self.similar_tracks_cache = {}
         self.last_similar_tracks_artist = None
+        self.last_similar_tracks_title = None
         self.lastfm_api_key = self.settings.value("lastfm_api_key", "") or ""
         self.discogs_token = self.settings.value("discogs_token", "") or ""
         self.similar_tracks_widen = self.settings.value("similar_tracks_widen", False, type=bool)
@@ -1882,6 +1904,7 @@ class MainWindow(QMainWindow):
         self._stop_album_art_thread()
         self._set_album_art_placeholder("Waiting for track info...")
         self.last_similar_tracks_artist = None
+        self.last_similar_tracks_title = None
         self._stop_similar_tracks_thread()
         self.statusBar().showMessage(f"Connecting to {station['name']}...", 4000)
         self.station_dialog.refresh_list()
@@ -2011,12 +2034,26 @@ class MainWindow(QMainWindow):
             return QIcon(pixmap)
         return None
 
+    def _cache_set(self, cache, key, value):
+        """dict[key] = value, then evict the oldest entry (insertion order)
+        if that pushes the cache past MAX_CACHE_ENTRIES. Used for the
+        lookup/artist-image/album-art/similar-tracks caches so none of them
+        grows unbounded over a long-running session."""
+        cache[key] = value
+        while len(cache) > self.MAX_CACHE_ENTRIES:
+            cache.pop(next(iter(cache)))
+
     def _lookup_track_info(self, title):
         if title in self.lookup_cache:
-            cached = self.lookup_cache[title]
-            self.track_info_dialog.apply_lookup(cached)
-            if cached.get("found") and cached.get("year"):
-                self._set_track_label(title, cached["year"])
+            # Route through _on_lookup_result rather than duplicating its
+            # logic here, so a cache hit still re-triggers the artist
+            # image/album art/similar tracks fetches (each of those has its
+            # own dedup/cache, so this is a cheap no-op when already showing
+            # the right thing) - otherwise a title repeating later in the
+            # session (common for radio) leaves the Similar Tracks panel
+            # stuck blank, since set_now_playing() unconditionally clears it
+            # and nothing here was refilling it.
+            self._on_lookup_result(self.lookup_cache[title])
             return
         self._stop_lookup_thread()
         self.lookup_thread = TrackLookupThread(title, self.lastfm_api_key)
@@ -2026,7 +2063,7 @@ class MainWindow(QMainWindow):
         self.lookup_thread.start()
 
     def _on_lookup_result(self, result):
-        self.lookup_cache[result["raw_title"]] = result
+        self._cache_set(self.lookup_cache, result["raw_title"], result)
         self.track_info_dialog.apply_lookup(result)
         if result.get("found") and result.get("year"):
             self._set_track_label(result["raw_title"], result["year"])
@@ -2139,7 +2176,7 @@ class MainWindow(QMainWindow):
 
     def _on_artist_image_ready(self, artist_name, data):
         raw = bytes(data)
-        self.artist_image_cache[artist_name] = raw
+        self._cache_set(self.artist_image_cache, artist_name, raw)
         if self._pending_notification_artist == artist_name:
             self._fire_pending_notification(artist_name)
         if artist_name != self.last_image_artist:
@@ -2152,7 +2189,7 @@ class MainWindow(QMainWindow):
             self._set_artist_image_placeholder("No image found")
 
     def _on_artist_image_not_found(self, artist_name):
-        self.artist_image_cache[artist_name] = None
+        self._cache_set(self.artist_image_cache, artist_name, None)
         if self._pending_notification_artist == artist_name:
             self._fire_pending_notification(artist_name)
         if artist_name == self.last_image_artist:
@@ -2211,9 +2248,13 @@ class MainWindow(QMainWindow):
         track_title = (track_title or "").strip()
         # Cache/dedup key: prefer the MBID (stable, ID-based), then the
         # iTunes artwork URL, and finally the artist/title pair when neither
-        # of those was available (Deezer-only lookup).
+        # of those was available (Deezer-only lookup). The artist/title case
+        # uses a tuple rather than a joined string so two different
+        # artist/title pairs can never collide onto the same cache key (e.g.
+        # artist "A B" + title "C" vs. artist "A" + title "B C"), and so it
+        # can never collide with a release_mbid/itunes_artwork_url string key.
         cache_key = release_mbid or itunes_artwork_url or (
-            f"{artist_name} {track_title}" if artist_name and track_title else ""
+            (artist_name, track_title) if artist_name and track_title else ""
         )
         if not cache_key:
             self.last_album_key = None
@@ -2252,7 +2293,7 @@ class MainWindow(QMainWindow):
 
     def _on_album_art_ready(self, cache_key, data):
         raw = bytes(data)
-        self.album_art_cache[cache_key] = raw
+        self._cache_set(self.album_art_cache, cache_key, raw)
         if cache_key != self.last_album_key:
             return
         pixmap = QPixmap()
@@ -2263,7 +2304,7 @@ class MainWindow(QMainWindow):
             self._set_album_art_placeholder("No cover art")
 
     def _on_album_art_not_found(self, cache_key):
-        self.album_art_cache[cache_key] = None
+        self._cache_set(self.album_art_cache, cache_key, None)
         if cache_key == self.last_album_key:
             self._set_album_art_placeholder("No cover art")
 
@@ -2302,12 +2343,14 @@ class MainWindow(QMainWindow):
         track_title = (track_title or "").strip()
         if not artist_name or not track_title:
             self.last_similar_tracks_artist = None
+            self.last_similar_tracks_title = None
             self._stop_similar_tracks_thread()
             self.track_info_dialog.set_similar_tracks([])
             return
         if artist_name == self.last_similar_tracks_artist:
             return  # already showing / fetching similar tracks for this artist
         self.last_similar_tracks_artist = artist_name
+        self.last_similar_tracks_title = track_title
 
         if artist_name in self.similar_tracks_cache:
             self.track_info_dialog.set_similar_tracks(self.similar_tracks_cache[artist_name])
@@ -2324,7 +2367,7 @@ class MainWindow(QMainWindow):
         self.similar_tracks_thread.start()
 
     def _on_similar_tracks_ready(self, artist_name, tracks):
-        self.similar_tracks_cache[artist_name] = tracks
+        self._cache_set(self.similar_tracks_cache, artist_name, tracks)
         if artist_name == self.last_similar_tracks_artist:
             self.track_info_dialog.set_similar_tracks(tracks)
 
@@ -2385,6 +2428,18 @@ class MainWindow(QMainWindow):
         self.similar_tracks_widen = checked
         self.settings.setValue("similar_tracks_widen", checked)
         self.similar_tracks_cache.clear()
+        # _fetch_similar_tracks() no-ops when asked to re-fetch for the
+        # artist it's already showing/fetching - which, without resetting
+        # last_similar_tracks_artist here too, would make toggling this
+        # setting invisible until the next track change. Re-fetch for the
+        # currently displayed track (if any) so the new widen setting takes
+        # effect immediately.
+        artist_name = self.last_similar_tracks_artist
+        track_title = self.last_similar_tracks_title
+        self.last_similar_tracks_artist = None
+        self.last_similar_tracks_title = None
+        if artist_name and track_title:
+            self._fetch_similar_tracks(artist_name, track_title)
 
     def _show_notification(self, title, body, icon=None):
         if not self.notifications_enabled:
@@ -2432,6 +2487,7 @@ class MainWindow(QMainWindow):
         self._set_album_art_placeholder("No image")
         self._stop_similar_tracks_thread()
         self.last_similar_tracks_artist = None
+        self.last_similar_tracks_title = None
         self.name_label.setText("Nothing playing")
         self.track_label.setText("")
         self.track_info_dialog.set_no_track()
