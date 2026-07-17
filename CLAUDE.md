@@ -105,7 +105,9 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
 - **`MainWindow`** — the main window, system tray integration, and the glue that owns the media
   player, wires thread signals to UI updates, and manages a cache for each of the four lookup
   threads (`lookup_cache`, `artist_image_cache`, `album_art_cache`, `similar_tracks_cache`) so repeat
-  lookups for the same track/artist/release don't re-hit the network.
+  lookups for the same track/artist/release don't re-hit the network. Each cache is capped at
+  `MAX_CACHE_ENTRIES` (300), evicting the oldest entry via `_cache_set()` once it grows past that —
+  otherwise a cache would grow unbounded for as long as the app stays open.
 
 ## Persistence
 
