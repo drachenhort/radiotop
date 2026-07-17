@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RadioTop is a single-file PySide6 (Qt for Python) desktop internet radio player. Nearly the entire
 application — UI, playback, metadata lookup, image fetching, settings — lives in `radiotop_gui.py`
-(~2000 lines). There is no package structure, no test suite, and no linter/formatter config; treat
-the file as the whole codebase.
+(~2700 lines). There is no package structure and no linter/formatter config; treat the file as the
+whole codebase (tests live separately under `tests/`, see Testing below).
 
 ## Running
 
@@ -79,6 +79,11 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
   - `IcyMetadataThread` — polls a stream briefly every 20s purely to read one ICY "now playing"
     metadata block, then disconnects, rather than holding a second full-bitrate connection open (to
     avoid inflating the station's listener count / bandwidth).
+  - `_CancellableRequestThread` — shared base for the four lookup threads below. Wraps
+    `urllib.request.urlopen()` so every in-flight response is tracked; `stop()` shuts down each
+    tracked socket directly rather than just closing it, the same cooperative-shutdown trick
+    `IcyMetadataThread.stop()` uses on its own single connection (see Notes below). Also provides
+    `_fetch_json()` / `_fetch_bytes()` helpers used throughout the subclasses.
   - `TrackLookupThread` — resolves genre/year/album for a track title via MusicBrainz (no key
     needed), optionally overriding genre with Last.fm tags if a Last.fm API key is configured, with
     the iTunes Search API (also no key needed) queried as a fallback source for album/year/genre and
@@ -93,8 +98,10 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
     that artist's Deezer "radio" (smart mix) as the pool, optionally widened with a few top tracks
     from related artists if `Settings > Widen Similar Tracks` is enabled.
 - **Dialogs** (`QDialog` subclasses) — `TrackInfoDialog` (also shows the `SimilarTracksThread`
-  results), `LastfmSettingsDialog` / `DiscogsSettingsDialog` (each with a "Test" button that
-  validates the key/token before saving), `EditStationDialog`, `StationListDialog`.
+  results); `LastfmSettingsDialog` / `DiscogsSettingsDialog`, both built on the shared
+  `_ApiCredentialDialog` base (key/token field + "Test" button that validates before saving, with
+  subclasses only supplying window chrome and a `_check()` method); `EditStationDialog`;
+  `StationListDialog`.
 - **`MainWindow`** — the main window, system tray integration, and the glue that owns the media
   player, wires thread signals to UI updates, and manages a cache for each of the four lookup
   threads (`lookup_cache`, `artist_image_cache`, `album_art_cache`, `similar_tracks_cache`) so repeat
@@ -114,8 +121,9 @@ they're used (see `MainWindow.__init__`, `_load_custom_stations` / `_save_custom
 - In `_StreamProxyHandler.do_GET`, the `url` query param must **not** be unquoted a second time —
   `parse_qs()` already percent-decodes it once; decoding again corrupts any percent-encoded byte in
   the original stream URL.
-- `IcyMetadataThread.stop()` shuts down the underlying socket directly (`resp.fp.raw._sock.shutdown`)
-  rather than just closing the response wrapper, because closing alone doesn't reliably interrupt a
-  blocking read on a stalled connection from another thread.
+- `IcyMetadataThread.stop()` and `_CancellableRequestThread.stop()` (base for the four lookup
+  threads) both shut down the underlying socket directly (`resp.fp.raw._sock.shutdown`) rather than
+  just closing the response wrapper, because closing alone doesn't reliably interrupt a blocking read
+  on a stalled connection from another thread.
 - Station URLs are normalized (port + filename defaults) independently per-field — a URL missing only
   the port gets just the port added, and vice versa — see `_normalize_station_url()`.
