@@ -10,21 +10,34 @@ Usage (from the project root, in a virtualenv with PySide6 + PyInstaller):
     pip install pyinstaller
     pyinstaller radiotop.spec
 
-The finished executable is written to dist/RadioTop.exe (or dist/RadioTop
-on Linux/macOS - this spec works cross-platform, it just only produces a
-.ico-branded icon on Windows, since that's the only platform that reads
-the `icon=` argument).
+The finished executable is written to dist/RadioTop.exe on Windows, or
+dist/RadioTop on Linux. On macOS, the EXE above is additionally wrapped in
+a BUNDLE below, producing dist/RadioTop.app - a real double-clickable app
+bundle with a Dock icon, rather than a bare Unix binary.
 
 Notes:
 - PySide6's PyInstaller hooks (bundled with the pyside6 package) take
   care of pulling in the Qt plugins RadioTop needs (platform, styles,
-  multimedia/Windows Media Foundation backend) automatically - no manual
-  --hidden-import / --collect-all flags should be needed.
+  multimedia/Windows Media Foundation or AVFoundation backend)
+  automatically - no manual --hidden-import / --collect-all flags should
+  be needed.
 - assets/radiotop.png and assets/radiotop_about_logo.png are bundled as
   data so the app can still find and use them at runtime via the
   _resource_path() helper in radiotop_gui.py, even when running from the
   frozen executable.
+- The macOS BUNDLE's icon is assets/radiotop.icns, generated at build time
+  by .github/workflows/build-macos.yml (not checked into the repo, since
+  it's a derived binary asset like radiotop.ico's multi-resolution set).
+  If it's missing (e.g. building locally without having run that
+  generation step), the bundle is still produced, just without a custom
+  Dock icon.
+- The resulting RadioTop.app is not code-signed or notarized, so a fresh
+  download will be Gatekeeper-blocked on other people's Macs until they
+  right-click -> Open once (or run `xattr -cr RadioTop.app`).
 """
+
+import os
+import sys
 
 a = Analysis(
     ['radiotop_gui.py'],
@@ -61,3 +74,16 @@ exe = EXE(
     entitlements_file=None,
     icon='assets/radiotop.ico',
 )
+
+if sys.platform == 'darwin':
+    icns_path = 'assets/radiotop.icns'
+    app = BUNDLE(
+        exe,
+        name='RadioTop.app',
+        icon=icns_path if os.path.exists(icns_path) else None,
+        bundle_identifier='com.radiotop.app',
+        info_plist={
+            'NSHighResolutionCapable': True,
+            'LSUIElement': False,  # show a Dock icon and app switcher entry, not just a menu-bar icon
+        },
+    )

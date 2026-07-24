@@ -62,6 +62,17 @@ Must be run on Windows (PyInstaller doesn't cross-compile); this is also why
 `main` that touch `radiotop_gui.py`, `radiotop.spec`, or `assets/**`, on manual dispatch, and on
 GitHub Release publish (in which case the built `RadioTop.exe` is attached to the release).
 
+## Building the macOS app
+
+Same `radiotop.spec`, same command, but on macOS it also wraps the executable in a `BUNDLE`,
+producing `dist/RadioTop.app` instead of a bare Unix binary. `.github/workflows/build-macos.yml`
+mirrors the Windows workflow (same triggers, `macos-latest` runner) and additionally generates
+`assets/radiotop.icns` at build time via `sips`/`iconutil` from `radiotop_about_logo.png` — that
+`.icns` isn't checked into the repo, since it's a derived binary asset like `radiotop.ico`'s
+multi-resolution set. The zipped `.app` isn't code-signed or notarized (no Apple Developer account
+wired in), so a fresh download is Gatekeeper-blocked until the user right-clicks → Open once, or
+runs `xattr -cr RadioTop.app`.
+
 ## Architecture
 
 Everything is in `radiotop_gui.py`, organized top-to-bottom as:

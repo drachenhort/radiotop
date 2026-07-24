@@ -1,0 +1,94 @@
+name: Build macOS app
+
+# Builds RadioTop.app on an actual macOS runner (PyInstaller can't
+# cross-compile - a macOS app bundle has to be built on macOS).
+#
+# The .icns app icon is generated at build time from
+# assets/radiotop_about_logo.png via sips/iconutil (both macOS-only tools),
+# rather than checked into the repo - see radiotop.spec for details.
+#
+# The resulting RadioTop.app is not code-signed or notarized (that needs a
+# paid Apple Developer account), so a fresh download will be
+# Gatekeeper-blocked until the user right-clicks -> Open once, or runs
+# `xattr -cr RadioTop.app`.
+#
+# - Runs automatically whenever the app code, icon, or build spec change.
+# - Can also be run manually from the Actions tab ("Run workflow").
+# - When triggered by publishing a GitHub Release, the zipped app is
+#   attached to that release automatically.
+#
+# Either way, the result is downloadable from the workflow run's
+# "Artifacts" section (Actions tab -> pick the run -> scroll to
+# Artifacts), or from the Release page if it was a release build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'radiotop_gui.py'
+      - 'radiotop.spec'
+      - 'assets/**'
+      - '.github/workflows/build-macos.yml'
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+# The default GITHUB_TOKEN is read-only for Releases unless a workflow
+# explicitly asks for write access here - without this, the "Attach to
+# GitHub Release" step fails with "Resource not accessible by integration".
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PySide6 pyinstaller
+
+      - name: Generate .icns app icon
+        run: |
+          set -e
+          ICONSET=RadioTop.iconset
+          mkdir "$ICONSET"
+          SRC=assets/radiotop_about_logo.png
+          sips -z 16 16     "$SRC" --out "$ICONSET/icon_16x16.png"
+          sips -z 32 32     "$SRC" --out "$ICONSET/icon_16x16@2x.png"
+          sips -z 32 32     "$SRC" --out "$ICONSET/icon_32x32.png"
+          sips -z 64 64     "$SRC" --out "$ICONSET/icon_32x32@2x.png"
+          sips -z 128 128   "$SRC" --out "$ICONSET/icon_128x128.png"
+          sips -z 256 256   "$SRC" --out "$ICONSET/icon_128x128@2x.png"
+          sips -z 256 256   "$SRC" --out "$ICONSET/icon_256x256.png"
+          sips -z 512 512   "$SRC" --out "$ICONSET/icon_256x256@2x.png"
+          sips -z 512 512   "$SRC" --out "$ICONSET/icon_512x512.png"
+          sips -z 1024 1024 "$SRC" --out "$ICONSET/icon_512x512@2x.png"
+          iconutil -c icns "$ICONSET" -o assets/radiotop.icns
+
+      - name: Build RadioTop.app
+        run: pyinstaller radiotop.spec
+
+      - name: Zip the app bundle
+        run: ditto -c -k --sequesterRsrc --keepParent dist/RadioTop.app dist/RadioTop-macos.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: RadioTop-macos
+          path: dist/RadioTop-macos.zip
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/RadioTop-macos.zip
