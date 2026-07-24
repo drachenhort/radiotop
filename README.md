@@ -67,7 +67,11 @@ powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Desktop
 
 ### macOS
 
-There's a `build-macos.yml` workflow that produces a `RadioTop.app` (see [Project layout](#project-layout)), but **it's untested against a real Mac** — I don't own one or have the resources to test on one, so it's only ever been verified by CI actually building successfully, not by anyone running the app. If you try it and hit issues, please open an issue. Until then, running from source (`pip install --user PySide6`, then `python3 radiotop_gui.py`) is the safer bet.
+There's a `build-macos.yml` workflow that produces a `RadioTop.app` (see [Project layout](#project-layout)), but **it's untested against a real Mac** — I don't own one or have the resources to test on one, so it's only ever been verified by CI actually building successfully, not by anyone running the app. If you try it and hit issues, please open an issue.
+
+A prebuilt `RadioTop-macos.zip` is attached to each [Release](https://github.com/drachenhort/radiotop/releases) — unzip it and drag `RadioTop.app` to Applications. It isn't code-signed or notarized (no Apple Developer account behind this project), so Gatekeeper will block the first launch; right-click the app and choose **Open** once (or run `xattr -cr RadioTop.app` in Terminal) to get past that.
+
+Until you've verified it works for you, running from source (`pip install --user PySide6`, then `python3 radiotop_gui.py`) is the safer bet.
 
 This sets up an isolated Python environment, installs PySide6, and creates Start Menu / Desktop shortcuts — no manual `pip install` needed. To build a standalone `.exe` instead, see [Building the .exe](INSTALL_WINDOWS.md#building-the-exe-optional) in that guide.
 
