@@ -2,7 +2,7 @@
 
 All notable changes to RadioTop are documented in this file.
 
-## [0.27] - 2026-07-24
+## [0.29] - 2026-07-24
 
 - Play now resumes the last-played station by default when nothing is selected yet in the
   current run, instead of always prompting the Stations list.
@@ -11,8 +11,14 @@ All notable changes to RadioTop are documented in this file.
 - Added automatic reconnection after a dropped stream connection, with the number of retry
   attempts and an on/off toggle configurable from **Settings**.
 - Added a Screenshots section to the README.
-- Fixed quote handling in Deezer search queries and bounded the lookup caches.
+
+## [0.28] - 2026-07-17
+
 - Show artist/album names as captions under their images.
+
+## [0.27] - 2026-07-16
+
+- Fixed quote handling in Deezer search queries and bounded the lookup caches.
 
 ## [0.26] - 2026-07-16
 
