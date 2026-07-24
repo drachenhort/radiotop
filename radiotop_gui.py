@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -1596,6 +1597,10 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(APP_ORG, APP_NAME)
         self.stations = list(DEFAULT_STATIONS) + self._load_custom_stations()
         self.current_idx = None
+        self.last_station_url = self.settings.value("last_station_url", "") or ""
+        self.auto_connect_last_station = self.settings.value(
+            "auto_connect_last_station", True, type=bool
+        )
         self._current_icy_name = None
         self._quitting = False
         self.meta_thread = None
@@ -1615,6 +1620,10 @@ class MainWindow(QMainWindow):
         self.discogs_token = self.settings.value("discogs_token", "") or ""
         self.similar_tracks_widen = self.settings.value("similar_tracks_widen", False, type=bool)
         self.notifications_enabled = self.settings.value("show_notifications", True, type=bool)
+        self.auto_reconnect_enabled = self.settings.value("auto_reconnect_enabled", True, type=bool)
+        self.reconnect_max_attempts = int(self.settings.value("reconnect_max_attempts", 3))
+        self._reconnect_attempts_remaining = 0
+        self._playback_generation = 0
         self._pending_notification_artist = None
         self._pending_notification_body = None
         self.track_info_dialog = TrackInfoDialog(self)
@@ -1638,6 +1647,11 @@ class MainWindow(QMainWindow):
         self._build_ui(start_volume)
         self._build_tray()
         self.station_dialog = StationListDialog(self)
+
+        if self.auto_connect_last_station:
+            idx = self._find_station_index_by_url(self.last_station_url)
+            if idx is not None:
+                QTimer.singleShot(0, lambda: self.play_index(idx))
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self, start_volume):
@@ -1826,6 +1840,23 @@ class MainWindow(QMainWindow):
         self.similar_tracks_widen_action.toggled.connect(self._on_similar_tracks_widen_toggled)
         settings_menu.addAction(self.similar_tracks_widen_action)
 
+        settings_menu.addSeparator()
+        self.auto_reconnect_action = QAction("Automatically &Reconnect on Drop", self)
+        self.auto_reconnect_action.setCheckable(True)
+        self.auto_reconnect_action.setChecked(self.auto_reconnect_enabled)
+        self.auto_reconnect_action.toggled.connect(self._on_auto_reconnect_toggled)
+        settings_menu.addAction(self.auto_reconnect_action)
+
+        reconnect_attempts_action = QAction("Reconnect &Attempts...", self)
+        reconnect_attempts_action.triggered.connect(self._configure_reconnect_attempts)
+        settings_menu.addAction(reconnect_attempts_action)
+
+        self.auto_connect_action = QAction("Connect to &Last Station on Startup", self)
+        self.auto_connect_action.setCheckable(True)
+        self.auto_connect_action.setChecked(self.auto_connect_last_station)
+        self.auto_connect_action.toggled.connect(self._on_auto_connect_toggled)
+        settings_menu.addAction(self.auto_connect_action)
+
         self.setStatusBar(QStatusBar())
 
     def _rebuild_stations_menu(self):
@@ -1884,11 +1915,16 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- list ---
     # ---------------------------------------------------------- playback ---
-    def play_index(self, idx):
+    def play_index(self, idx, _is_reconnect=False):
         if idx is None or idx < 0 or idx >= len(self.stations):
             return
         station = self.stations[idx]
         self.current_idx = idx
+        self.last_station_url = station["url"]
+        self.settings.setValue("last_station_url", station["url"])
+        if not _is_reconnect:
+            self._playback_generation += 1
+            self._reconnect_attempts_remaining = self.reconnect_max_attempts
         self._current_icy_name = None
         if self.stream_proxy is not None:
             play_url = self.stream_proxy.local_url(station["url"])
@@ -2442,6 +2478,28 @@ class MainWindow(QMainWindow):
         self.notifications_enabled = checked
         self.settings.setValue("show_notifications", checked)
 
+    def _on_auto_reconnect_toggled(self, checked):
+        self.auto_reconnect_enabled = checked
+        self.settings.setValue("auto_reconnect_enabled", checked)
+
+    def _on_auto_connect_toggled(self, checked):
+        self.auto_connect_last_station = checked
+        self.settings.setValue("auto_connect_last_station", checked)
+
+    def _configure_reconnect_attempts(self):
+        value, ok = QInputDialog.getInt(
+            self,
+            "Reconnect Attempts",
+            "Number of reconnect attempts after a dropped connection:",
+            self.reconnect_max_attempts,
+            1,
+            10,
+            1,
+        )
+        if ok:
+            self.reconnect_max_attempts = value
+            self.settings.setValue("reconnect_max_attempts", value)
+
     def _on_similar_tracks_widen_toggled(self, checked):
         self.similar_tracks_widen = checked
         self.settings.setValue("similar_tracks_widen", checked)
@@ -2483,7 +2541,19 @@ class MainWindow(QMainWindow):
         elif self.current_idx is not None:
             self.play_index(self.current_idx)  # resume whatever was last selected
         else:
-            self._show_station_list_dialog()  # nothing chosen yet - prompt for a station
+            idx = self._find_station_index_by_url(self.last_station_url)
+            if idx is not None:
+                self.play_index(idx)  # nothing selected this run - resume last-played station
+            else:
+                self._show_station_list_dialog()  # never played anything - prompt for a station
+
+    def _find_station_index_by_url(self, url):
+        if not url:
+            return None
+        for idx, station in enumerate(self.stations):
+            if station["url"] == url:
+                return idx
+        return None
 
     def _show_station_list_dialog(self):
         self.station_dialog.refresh_list()
@@ -2494,6 +2564,7 @@ class MainWindow(QMainWindow):
     def stop_playback(self):
         self.player.stop()
         self.current_idx = None
+        self._playback_generation += 1  # invalidate any pending auto-reconnect retry
         self._stop_metadata_thread()
         self._stop_lookup_thread()
         self._stop_artist_image_thread()
@@ -2556,6 +2627,28 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Error")
         self.status_label.setStyleSheet(f"color: {STATUS_COLORS['Error']};")
         self.statusBar().showMessage(error_string or "Playback error", 6000)
+        self._maybe_reconnect()
+
+    def _maybe_reconnect(self):
+        if not self.auto_reconnect_enabled:
+            return
+        if self.current_idx is None or self._reconnect_attempts_remaining <= 0:
+            return
+        self._reconnect_attempts_remaining -= 1
+        idx = self.current_idx
+        generation = self._playback_generation
+        self.statusBar().showMessage(
+            f"Connection dropped, reconnecting "
+            f"({self.reconnect_max_attempts - self._reconnect_attempts_remaining}/"
+            f"{self.reconnect_max_attempts})...",
+            4000,
+        )
+        QTimer.singleShot(3000, lambda: self._do_reconnect(idx, generation))
+
+    def _do_reconnect(self, idx, generation):
+        if generation != self._playback_generation:
+            return  # station changed or playback was stopped since the error
+        self.play_index(idx, _is_reconnect=True)
 
     # ------------------------------------------------------------ volume ---
     def _on_volume_changed(self, value):

@@ -13,11 +13,18 @@ Built with [PySide6](https://doc.qt.io/qtforpython/) (Qt for Python), so it auto
 ![PySide6](https://img.shields.io/badge/PySide6-Qt%20for%20Python-41cd52)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%2010%2F11-blue)
 
+## Screenshots
+
+| Now playing | Stations | Track Info |
+|---|---|---|
+| ![Now playing](assets/screenshots/playing.png) | ![Stations](assets/screenshots/stations.png) | ![Track Info](assets/screenshots/track_info.png) |
+
 ## Features
 
-- 🎵 Play internet radio streams (Shoutcast/Icecast) with play / pause / stop controls
+- 🎵 Play internet radio streams (Shoutcast/Icecast) with play / pause / stop controls — Play resumes the last-played station if none is selected yet, and RadioTop can auto-connect to it on startup (toggleable)
 - 📻 Add, edit, search, and remove your own custom stations — remembered between runs
 - 🏷️ Live "now playing" track title from the stream's ICY metadata
+- 🔁 Automatically reconnects after a dropped stream connection, with a configurable number of attempts (or disable it entirely) via **Settings**
 - 🔎 Automatic track lookup — genre, release year, and album via [MusicBrainz](https://musicbrainz.org/), with optional richer genre tags from [Last.fm](https://www.last.fm/api)
 - 🖼️ Artist photos (Discogs → Wikipedia → Last.fm) and album cover art (Cover Art Archive)
 - 🔔 Native desktop notifications when a new station or track starts playing (toggleable)
