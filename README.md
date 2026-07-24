@@ -15,9 +15,9 @@ Built with [PySide6](https://doc.qt.io/qtforpython/) (Qt for Python), so it auto
 
 ## Screenshots
 
-| Now playing | Stations | Track Info |
-|---|---|---|
-| ![Now playing](assets/screenshots/playing.png) | ![Stations](assets/screenshots/stations.png) | ![Track Info](assets/screenshots/track_info.png) |
+| Now playing | Stations | Track Info | Settings |
+|---|---|---|---|
+| ![Now playing](assets/screenshots/playing.png) | ![Stations](assets/screenshots/stations.png) | ![Track Info](assets/screenshots/track_info.png) | ![Settings](assets/screenshots/settings.png) |
 
 ## Features
 
