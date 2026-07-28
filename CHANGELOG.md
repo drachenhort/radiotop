@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.33] - 2026-07-28
+
+- Added update checking against GitHub releases: a once-a-day automatic check on startup
+  plus **Help → Check for Updates**, showing a dialog with a link to the release page when
+  a newer version is out. The app's version now also shows in the About dialog.
+
 ## [0.32] - 2026-07-28
 
 - SUB/WAVE detection now shows only in the "Playing on - ..." status line, not duplicated
