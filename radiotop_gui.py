@@ -2148,7 +2148,7 @@ class MainWindow(QMainWindow):
         if "(SUB/WAVE)" not in station["name"] and "(SUB/WAVE)" not in self.name_label.text():
             self.name_label.setText(f'{self.name_label.text()} (SUB/WAVE)')
 
-        now = payload.get("now_playing") or {}
+        now = (payload.get("now_playing") or {}).get("nowPlaying") or {}
         artist = (now.get("artist") or "").strip()
         title = (now.get("title") or "").strip()
         if artist and title:
