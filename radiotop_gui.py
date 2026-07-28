@@ -1719,6 +1719,7 @@ class MainWindow(QMainWindow):
         self.subwave_thread = None
         self.subwave_api_base = None
         self._current_subwave_track = None
+        self._subwave_detected = False
         self._subwave_request_threads = []
         self.liked_tracks = self._load_liked_tracks()
         self._reconnect_attempts_remaining = 0
@@ -2090,6 +2091,7 @@ class MainWindow(QMainWindow):
     def _start_subwave_thread(self, url):
         self._stop_subwave_thread()
         self._current_subwave_track = None
+        self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
         self.like_btn.setEnabled(False)
@@ -2136,6 +2138,7 @@ class MainWindow(QMainWindow):
     def _on_subwave_unavailable(self):
         self.subwave_api_base = None
         self._current_subwave_track = None
+        self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
         self.like_btn.setEnabled(False)
@@ -2147,6 +2150,8 @@ class MainWindow(QMainWindow):
         station = self.stations[self.current_idx]
         if "(SUB/WAVE)" not in station["name"] and "(SUB/WAVE)" not in self.name_label.text():
             self.name_label.setText(f'{self.name_label.text()} (SUB/WAVE)')
+        self._subwave_detected = True
+        self._update_status()
 
         now = (payload.get("now_playing") or {}).get("nowPlaying") or {}
         artist = (now.get("artist") or "").strip()
@@ -2831,6 +2836,7 @@ class MainWindow(QMainWindow):
         self._stop_subwave_thread()
         self._stop_subwave_request_threads()
         self._current_subwave_track = None
+        self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
         self.like_btn.setEnabled(False)
@@ -2881,6 +2887,8 @@ class MainWindow(QMainWindow):
             # name, which may be a name the user typed in and that
             # _on_icy_station_name therefore left untouched.
             display_name = self._current_icy_name or self.stations[self.current_idx]["name"]
+            if self._subwave_detected:
+                display_name += " (SUB/WAVE)"
             text = f"Playing on - {display_name}"
 
         self.status_label.setText(text)

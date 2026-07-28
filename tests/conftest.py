@@ -70,6 +70,7 @@ class MainWindowStub(QObject):
         self.stations = stations if stations is not None else []
         self.current_idx = None
         self._current_icy_name = None
+        self._subwave_detected = False
         self.stations_menu = QMenu()
         self.play_index_calls = []
         self.show_station_list_dialog_calls = 0
