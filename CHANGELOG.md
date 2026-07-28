@@ -2,6 +2,11 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.32] - 2026-07-28
+
+- SUB/WAVE detection now shows only in the "Playing on - ..." status line, not duplicated
+  on the station name label.
+
 ## [0.31] - 2026-07-28
 
 - Dropped BPM/key from the SUB/WAVE now-playing detail line, keeping genre only.
