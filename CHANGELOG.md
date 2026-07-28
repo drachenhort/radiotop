@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [Unreleased]
+
+- Added SUB/WAVE station integration: richer now-playing metadata (genre/key/BPM) and a
+  "Next" track label pulled from a SUB/WAVE station's own API, plus a Like button that
+  nudges the station's DJ toward similar tracks.
+
 ## [0.29] - 2026-07-24
 
 - Play now resumes the last-played station by default when nothing is selected yet in the
