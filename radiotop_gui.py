@@ -2147,9 +2147,6 @@ class MainWindow(QMainWindow):
     def _on_subwave_now_playing(self, payload):
         if self.current_idx is None:
             return
-        station = self.stations[self.current_idx]
-        if "(SUB/WAVE)" not in station["name"] and "(SUB/WAVE)" not in self.name_label.text():
-            self.name_label.setText(f'{self.name_label.text()} (SUB/WAVE)')
         self._subwave_detected = True
         self._update_status()
 
