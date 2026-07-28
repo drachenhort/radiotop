@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.34] - 2026-07-28
+
+- Added BPM and Key to the Track Info window for SUB/WAVE stations, attributed to SUB/WAVE
+  as their source since MusicBrainz/Last.fm/iTunes don't supply them.
+- Added an "On Air: <show>" label for SUB/WAVE stations currently running a scheduled show.
+
 ## [0.33] - 2026-07-28
 
 - Added update checking against GitHub releases: a once-a-day automatic check on startup

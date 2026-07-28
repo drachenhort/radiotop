@@ -77,7 +77,7 @@ from PySide6.QtCore import QSettings
 
 APP_ORG = "radiotop"
 APP_NAME = "RadioTop"
-APP_VERSION = "0.33"  # bumped alongside the CHANGELOG entry at release time
+APP_VERSION = "0.34"  # bumped alongside the CHANGELOG entry at release time
 
 GITHUB_REPO = "drachenhort/radiotop"
 UPDATE_CHECK_INTERVAL_SECS = 24 * 60 * 60  # don't auto-check more than once a day
