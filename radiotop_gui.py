@@ -1856,6 +1856,12 @@ class MainWindow(QMainWindow):
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.name_label)
 
+        self.show_label = QLabel("")
+        self.show_label.setWordWrap(True)
+        self.show_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.show_label.setStyleSheet("color: #888888; font-size: 10px;")
+        root.addWidget(self.show_label)
+
         self.track_label = QLabel("")
         self.track_label.setWordWrap(True)
         self.track_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2183,6 +2189,7 @@ class MainWindow(QMainWindow):
         self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
+        self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
         self.subwave_api_base = _subwave_api_base(url)
@@ -2230,6 +2237,7 @@ class MainWindow(QMainWindow):
         self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
+        self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
 
@@ -2239,7 +2247,11 @@ class MainWindow(QMainWindow):
         self._subwave_detected = True
         self._update_status()
 
-        now = (payload.get("now_playing") or {}).get("nowPlaying") or {}
+        now_response = payload.get("now_playing") or {}
+        active_show = now_response.get("activeShow") or {}
+        self.show_label.setText(f"On Air: {active_show['name']}" if active_show.get("name") else "")
+
+        now = now_response.get("nowPlaying") or {}
         artist = (now.get("artist") or "").strip()
         title = (now.get("title") or "").strip()
         if artist and title:
@@ -2941,6 +2953,7 @@ class MainWindow(QMainWindow):
         self._subwave_detected = False
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
+        self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
         self._stop_lookup_thread()
