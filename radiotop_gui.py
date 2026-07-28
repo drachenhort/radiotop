@@ -39,6 +39,7 @@ import re
 import socket
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
@@ -46,7 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 from PySide6.QtCore import Qt, QUrl, Signal, QThread, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QFont, QIcon, QPixmap
+from PySide6.QtGui import QAction, QActionGroup, QDesktopServices, QFont, QIcon, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -76,6 +77,10 @@ from PySide6.QtCore import QSettings
 
 APP_ORG = "radiotop"
 APP_NAME = "RadioTop"
+APP_VERSION = "0.32"  # bumped alongside the CHANGELOG entry at release time
+
+GITHUB_REPO = "drachenhort/radiotop"
+UPDATE_CHECK_INTERVAL_SECS = 24 * 60 * 60  # don't auto-check more than once a day
 
 DEFAULT_STATIONS = []
 
@@ -164,6 +169,20 @@ def _subwave_api_base(stream_url):
     "unavailable" and gives up quietly rather than erroring."""
     parsed = urlparse(stream_url)
     return urlunparse((parsed.scheme, parsed.netloc, "/api", "", "", ""))
+
+
+def _parse_version(version_str):
+    """Turns a release tag like "0.32" (or, for older tags, "v0.23"/"V0.21")
+    into an int tuple for comparison, since plain string comparison would
+    sort "0.9" after "0.10"."""
+    digits = version_str.lstrip("vV")
+    parts = []
+    for piece in digits.split("."):
+        try:
+            parts.append(int(piece))
+        except ValueError:
+            break
+    return tuple(parts)
 
 
 def _resource_path(*parts):
@@ -552,6 +571,42 @@ class SubwaveRequestThread(_CancellableRequestThread):
             self._fetch_json(req)
         except Exception:
             pass
+
+
+class UpdateCheckThread(_CancellableRequestThread):
+    """One-shot check against GitHub's "latest release" API for a newer
+    RadioTop version than the one currently running. Read-only and
+    unauthenticated - GitHub's public API rate limit (60/hr per IP) is far
+    more than a once-a-day check plus the occasional manual one could ever
+    hit."""
+
+    check_complete = Signal(dict)
+
+    def __init__(self, current_version):
+        super().__init__()
+        self.current_version = current_version
+
+    def run(self):
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            headers={"User-Agent": RADIOTOP_USER_AGENT, "Accept": "application/vnd.github+json"},
+        )
+        try:
+            data = self._fetch_json(req)
+        except Exception as exc:
+            if not self._stop_event.is_set():
+                self.check_complete.emit({"error": str(exc)})
+            return
+        if data is None:
+            return  # stopped
+        latest_tag = data.get("tag_name") or ""
+        available = _parse_version(latest_tag) > _parse_version(self.current_version)
+        self.check_complete.emit({
+            "available": available,
+            "latest_version": latest_tag,
+            "notes": data.get("body") or "",
+            "html_url": data.get("html_url") or f"https://github.com/{GITHUB_REPO}/releases",
+        })
 
 
 class TrackLookupThread(_CancellableRequestThread):
@@ -1722,6 +1777,7 @@ class MainWindow(QMainWindow):
         self._subwave_detected = False
         self._subwave_request_threads = []
         self.liked_tracks = self._load_liked_tracks()
+        self.update_check_thread = None
         self._reconnect_attempts_remaining = 0
         self._playback_generation = 0
         self._pending_notification_artist = None
@@ -1752,6 +1808,10 @@ class MainWindow(QMainWindow):
             idx = self._find_station_index_by_url(self.last_station_url)
             if idx is not None:
                 QTimer.singleShot(0, lambda: self.play_index(idx))
+
+        last_check = float(self.settings.value("last_update_check", 0))
+        if time.time() - last_check >= UPDATE_CHECK_INTERVAL_SECS:
+            QTimer.singleShot(3000, lambda: self._check_for_updates(manual=False))
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self, start_volume):
@@ -1923,6 +1983,9 @@ class MainWindow(QMainWindow):
         about_action = QAction("&About RadioTop", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+        update_action = QAction("Check for &Updates...", self)
+        update_action.triggered.connect(lambda: self._check_for_updates(manual=True))
+        help_menu.addAction(update_action)
 
         view_menu = self.menuBar().addMenu("&View")
         stations_action = QAction("&Station List...", self)
@@ -2216,6 +2279,20 @@ class MainWindow(QMainWindow):
                     thread.wait(500)
             except RuntimeError:
                 pass  # underlying C++ object was already deleted - nothing to do
+
+    def _stop_update_check_thread(self):
+        thread = self.update_check_thread
+        self.update_check_thread = None
+        if thread is None:
+            return
+        try:
+            thread.stop()
+            thread.wait(2000)
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(500)
+        except RuntimeError:
+            pass  # underlying C++ object was already deleted - nothing to do
 
     def _start_metadata_thread(self, url):
         self._stop_metadata_thread()
@@ -3002,7 +3079,7 @@ class MainWindow(QMainWindow):
         dlg = QMessageBox(self)
         dlg.setWindowTitle("About RadioTop")
         dlg.setText(
-            "<b>RadioTop</b><br>A simple internet radio player.<br>No bloat, just play.<br>"
+            f"<b>RadioTop</b> v{APP_VERSION}<br>A simple internet radio player.<br>No bloat, just play.<br>"
             "Built with PySide6 / Qt Multimedia."
         )
         logo_path = _resource_path("assets", "radiotop_about_logo.png")
@@ -3018,6 +3095,53 @@ class MainWindow(QMainWindow):
         dlg.setStandardButtons(QMessageBox.StandardButton.Ok)
         dlg.exec()
 
+    def _check_for_updates(self, manual=False):
+        if self.update_check_thread is not None:
+            if manual:
+                self.statusBar().showMessage("Already checking for updates...", 3000)
+            return
+        self.update_check_thread = UpdateCheckThread(APP_VERSION)
+        self.update_check_thread.check_complete.connect(
+            lambda result: self._on_update_check_complete(result, manual)
+        )
+        self.update_check_thread.finished.connect(self._on_update_check_thread_finished)
+        self.update_check_thread.finished.connect(self.update_check_thread.deleteLater)
+        self.update_check_thread.start()
+
+    def _on_update_check_thread_finished(self):
+        if self.sender() is self.update_check_thread:
+            self.update_check_thread = None
+
+    def _on_update_check_complete(self, result, manual):
+        self.settings.setValue("last_update_check", time.time())
+        error = result.get("error")
+        if error:
+            if manual:
+                QMessageBox.warning(self, "Check for Updates", f"Couldn't check for updates:\n{error}")
+            return
+        if not result.get("available"):
+            if manual:
+                QMessageBox.information(
+                    self, "Check for Updates", f"You're up to date (v{APP_VERSION})."
+                )
+            return
+
+        latest_version = result.get("latest_version", "?")
+        notes = result.get("notes", "").strip()
+        html_url = result.get("html_url")
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("Update Available")
+        dlg.setIcon(QMessageBox.Icon.Information)
+        text = f"RadioTop v{latest_version} is available (you have v{APP_VERSION})."
+        if notes:
+            text += f"\n\n{notes}"
+        dlg.setText(text)
+        open_btn = dlg.addButton("Open Release Page", QMessageBox.ButtonRole.ActionRole)
+        dlg.addButton(QMessageBox.StandardButton.Close)
+        dlg.exec()
+        if dlg.clickedButton() is open_btn and html_url:
+            QDesktopServices.openUrl(QUrl(html_url))
+
     def quit_app(self):
         self._quitting = True
         # An active tray icon can keep the process alive on some desktops
@@ -3029,6 +3153,7 @@ class MainWindow(QMainWindow):
         self._stop_metadata_thread()
         self._stop_subwave_thread()
         self._stop_subwave_request_threads()
+        self._stop_update_check_thread()
         self._stop_lookup_thread()
         self._stop_artist_image_thread()
         self._stop_album_art_thread()
