@@ -7,13 +7,34 @@ def test_set_waiting_resets_labels(qapp):
         "found": True, "title": "T", "artist": "A", "album": "Al",
         "genre": "G", "year": "2020", "sources": ["MusicBrainz"],
     })
+    dlg.set_subwave_details(123, "7A")
     dlg.set_waiting()
     assert dlg.title_label.text() == "Waiting for stream metadata..."
     assert dlg.artist_label.text() == ""
     assert dlg.album_label.text() == "Album: -"
     assert dlg.genre_value.text() == "-"
     assert dlg.year_value.text() == "-"
+    assert dlg.bpm_value.text() == "-"
+    assert dlg.key_value.text() == "-"
+    assert dlg.subwave_note_label.text() == ""
     assert dlg.status_label.text() == ""
+
+
+def test_set_subwave_details_populates_bpm_and_key_with_note(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_subwave_details(123, "7A")
+    assert dlg.bpm_value.text() == "123"
+    assert dlg.key_value.text() == "7A"
+    assert "SUB/WAVE" in dlg.subwave_note_label.text()
+
+
+def test_set_subwave_details_clears_when_no_data(qapp):
+    dlg = TrackInfoDialog()
+    dlg.set_subwave_details(123, "7A")
+    dlg.set_subwave_details(None, None)
+    assert dlg.bpm_value.text() == "-"
+    assert dlg.key_value.text() == "-"
+    assert dlg.subwave_note_label.text() == ""
 
 
 def test_set_no_track(qapp):

@@ -1245,11 +1245,19 @@ class TrackInfoDialog(QDialog):
         form = QFormLayout()
         self.genre_value = QLabel("-")
         self.year_value = QLabel("-")
-        for lbl in (self.genre_value, self.year_value):
+        self.bpm_value = QLabel("-")
+        self.key_value = QLabel("-")
+        for lbl in (self.genre_value, self.year_value, self.bpm_value, self.key_value):
             lbl.setWordWrap(True)
         form.addRow("Genre:", self.genre_value)
         form.addRow("Year:", self.year_value)
+        form.addRow("BPM:", self.bpm_value)
+        form.addRow("Key:", self.key_value)
         layout.addLayout(form)
+
+        self.subwave_note_label = QLabel("")
+        self.subwave_note_label.setStyleSheet("color: #888888; font-style: italic; font-size: 10px;")
+        layout.addWidget(self.subwave_note_label)
 
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("color: #888888; font-style: italic;")
@@ -1277,6 +1285,9 @@ class TrackInfoDialog(QDialog):
         self.album_label.setText("Album: -")
         self.genre_value.setText("-")
         self.year_value.setText("-")
+        self.bpm_value.setText("-")
+        self.key_value.setText("-")
+        self.subwave_note_label.setText("")
         self.status_label.setText("")
         self.similar_list.clear()
         self._reset_width()
@@ -1287,6 +1298,9 @@ class TrackInfoDialog(QDialog):
         self.album_label.setText("Album: -")
         self.genre_value.setText("-")
         self.year_value.setText("-")
+        self.bpm_value.setText("-")
+        self.key_value.setText("-")
+        self.subwave_note_label.setText("")
         self.status_label.setText("")
         self.similar_list.clear()
         self._reset_width()
@@ -1297,9 +1311,21 @@ class TrackInfoDialog(QDialog):
         self.album_label.setText("Album: -")
         self.genre_value.setText("-")
         self.year_value.setText("-")
+        self.bpm_value.setText("-")
+        self.key_value.setText("-")
+        self.subwave_note_label.setText("")
         self.status_label.setText("Looking up track details...")
         self.similar_list.clear()
         self._reset_width()
+
+    def set_subwave_details(self, bpm, musical_key):
+        """BPM/key aren't available from MusicBrainz/Last.fm/iTunes - only a
+        SUB/WAVE station's own API supplies them (from its acoustic
+        analysis of the track), so the note makes that source explicit
+        rather than presenting them as just another lookup field."""
+        self.bpm_value.setText(str(bpm) if bpm else "-")
+        self.key_value.setText(str(musical_key) if musical_key else "-")
+        self.subwave_note_label.setText("BPM/Key supplied by SUB/WAVE" if (bpm or musical_key) else "")
 
     def set_similar_tracks_loading(self):
         self.similar_list.clear()
@@ -2222,11 +2248,13 @@ class MainWindow(QMainWindow):
             self.like_btn.setEnabled(True)
             liked = self._liked_key(artist, title) in self.liked_tracks
             self.like_btn.setText("★ Liked" if liked else "☆ Like")
+            self.track_info_dialog.set_subwave_details(now.get("bpm"), now.get("musicalKey"))
         else:
             self._current_subwave_track = None
             self.subwave_detail_label.setText("")
             self.like_btn.setEnabled(False)
             self.like_btn.setText("☆ Like")
+            self.track_info_dialog.set_subwave_details(None, None)
 
         state = payload.get("state") or {}
         upcoming = state.get("upcoming") or []
