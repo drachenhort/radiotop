@@ -156,6 +156,16 @@ def _normalize_station_url(url):
     return new_url, True
 
 
+def _subwave_api_base(stream_url):
+    """A SUB/WAVE station's HTTP API lives on the same origin as its stream
+    URL, under /api (the bundled-Caddy production deploy puts the stream,
+    web UI, and API behind one origin). Stations that aren't SUB/WAVE simply
+    won't answer under that path - SubwaveNowPlayingThread treats that as
+    "unavailable" and gives up quietly rather than erroring."""
+    parsed = urlparse(stream_url)
+    return urlunparse((parsed.scheme, parsed.netloc, "/api", "", "", ""))
+
+
 def _resource_path(*parts):
     """Resolve a path to a bundled resource (e.g. an icon), working both
     when running from source and when frozen into a standalone executable
@@ -458,6 +468,90 @@ class _CancellableRequestThread(QThread):
                 resp.close()
             except Exception:
                 pass
+
+
+class SubwaveNowPlayingThread(_CancellableRequestThread):
+    """Polls a SUB/WAVE station's own HTTP API (GET /now-playing + GET
+    /state, both unauthenticated) for richer now-playing metadata than ICY
+    tags give us - genre/BPM/key/mood, the DJ persona, and the upcoming
+    queue for a "next track" display. Polled every POLL_INTERVAL seconds,
+    matching the interval SUB/WAVE's own web player polls at. If the first
+    couple of polls fail (wrong port, not a SUB/WAVE station, API down),
+    unavailable() fires once and the thread exits - there's no point
+    hammering a station that was never going to answer."""
+
+    now_playing_ready = Signal(dict)
+    unavailable = Signal()
+
+    POLL_INTERVAL = 5  # seconds, matching the SUB/WAVE web player's own poll rate
+    MAX_CONSECUTIVE_FAILURES = 2
+
+    def __init__(self, api_base):
+        super().__init__()
+        self.api_base = api_base
+
+    def run(self):
+        failures = 0
+        while not self._stop_event.is_set():
+            now, state = self._poll_once()
+            if self._stop_event.is_set():
+                return
+            if now is None and state is None:
+                failures += 1
+                if failures >= self.MAX_CONSECUTIVE_FAILURES:
+                    self.unavailable.emit()
+                    return
+            else:
+                failures = 0
+                self.now_playing_ready.emit({"now_playing": now or {}, "state": state or {}})
+            self._stop_event.wait(self.POLL_INTERVAL)
+
+    def _poll_once(self):
+        headers = {"User-Agent": RADIOTOP_USER_AGENT, "Accept": "application/json"}
+        now = state = None
+        try:
+            now = self._fetch_json(
+                urllib.request.Request(f"{self.api_base}/now-playing", headers=headers)
+            )
+        except Exception:
+            pass
+        try:
+            state = self._fetch_json(
+                urllib.request.Request(f"{self.api_base}/state", headers=headers)
+            )
+        except Exception:
+            pass
+        return now, state
+
+
+class SubwaveRequestThread(_CancellableRequestThread):
+    """Fires a one-shot POST /request to a SUB/WAVE station's API when the
+    user likes the current track - SUB/WAVE has no persistent star/favorite
+    endpoint, so "like" is a free-text request nudging the DJ's picker
+    toward similar material, not a record kept on the station. Fire-and-
+    forget: nobody is waiting on the result, so failures are swallowed."""
+
+    def __init__(self, api_base, text):
+        super().__init__()
+        self.api_base = api_base
+        self.text = text
+
+    def run(self):
+        body = json.dumps({"text": self.text}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.api_base}/request",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": RADIOTOP_USER_AGENT,
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            self._fetch_json(req)
+        except Exception:
+            pass
 
 
 class TrackLookupThread(_CancellableRequestThread):
@@ -1622,6 +1716,11 @@ class MainWindow(QMainWindow):
         self.notifications_enabled = self.settings.value("show_notifications", True, type=bool)
         self.auto_reconnect_enabled = self.settings.value("auto_reconnect_enabled", True, type=bool)
         self.reconnect_max_attempts = int(self.settings.value("reconnect_max_attempts", 3))
+        self.subwave_thread = None
+        self.subwave_api_base = None
+        self._current_subwave_track = None
+        self._subwave_request_threads = []
+        self.liked_tracks = self._load_liked_tracks()
         self._reconnect_attempts_remaining = 0
         self._playback_generation = 0
         self._pending_notification_artist = None
@@ -1679,6 +1778,18 @@ class MainWindow(QMainWindow):
         self.track_label.setStyleSheet("color: #3daee9;")
         root.addWidget(self.track_label)
 
+        self.subwave_detail_label = QLabel("")
+        self.subwave_detail_label.setWordWrap(True)
+        self.subwave_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subwave_detail_label.setStyleSheet("color: #888888; font-size: 10px;")
+        root.addWidget(self.subwave_detail_label)
+
+        self.next_track_label = QLabel("")
+        self.next_track_label.setWordWrap(True)
+        self.next_track_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_track_label.setStyleSheet("color: #888888; font-size: 10px;")
+        root.addWidget(self.next_track_label)
+
         self.status_label = QLabel("Stopped")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_font = QFont()
@@ -1713,6 +1824,11 @@ class MainWindow(QMainWindow):
         self.info_btn = QPushButton("Track Info")
         self.info_btn.clicked.connect(self._show_track_info_dialog)
         info_row.addWidget(self.info_btn)
+        self.like_btn = QPushButton("☆ Like")
+        self.like_btn.setToolTip("Nudge the SUB/WAVE DJ toward more like this")
+        self.like_btn.setEnabled(False)
+        self.like_btn.clicked.connect(self._on_like_clicked)
+        info_row.addWidget(self.like_btn)
         info_row.addStretch(1)
         root.addLayout(info_row)
 
@@ -1913,6 +2029,23 @@ class MainWindow(QMainWindow):
         customs = [s for s in self.stations if s.get("custom")]
         self.settings.setValue("custom_stations", json.dumps(customs))
 
+    def _load_liked_tracks(self):
+        raw = self.settings.value("liked_tracks", "[]")
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return set(data)
+        except (TypeError, json.JSONDecodeError):
+            pass
+        return set()
+
+    def _save_liked_tracks(self):
+        self.settings.setValue("liked_tracks", json.dumps(sorted(self.liked_tracks)))
+
+    @staticmethod
+    def _liked_key(artist, title):
+        return f"{artist.strip().lower()}||{title.strip().lower()}"
+
     # ------------------------------------------------------------- list ---
     # ---------------------------------------------------------- playback ---
     def play_index(self, idx, _is_reconnect=False):
@@ -1952,6 +2085,136 @@ class MainWindow(QMainWindow):
         self.station_dialog.refresh_list()
         self._rebuild_stations_menu()
         self._start_metadata_thread(station["url"])
+        self._start_subwave_thread(station["url"])
+
+    def _start_subwave_thread(self, url):
+        self._stop_subwave_thread()
+        self._current_subwave_track = None
+        self.subwave_detail_label.setText("")
+        self.next_track_label.setText("")
+        self.like_btn.setEnabled(False)
+        self.like_btn.setText("☆ Like")
+        self.subwave_api_base = _subwave_api_base(url)
+        self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base)
+        self.subwave_thread.now_playing_ready.connect(self._on_subwave_now_playing)
+        self.subwave_thread.unavailable.connect(self._on_subwave_unavailable)
+        self.subwave_thread.finished.connect(self._on_subwave_thread_finished)
+        self.subwave_thread.finished.connect(self.subwave_thread.deleteLater)
+        self.subwave_thread.start()
+
+    def _stop_subwave_thread(self):
+        thread = self.subwave_thread
+        self.subwave_thread = None
+        self.subwave_api_base = None
+        if thread is None:
+            return
+        try:
+            thread.now_playing_ready.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            thread.unavailable.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            thread.finished.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            thread.stop()
+            thread.wait(2000)
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(500)
+        except RuntimeError:
+            pass  # underlying C++ object was already deleted - nothing to do
+
+    def _on_subwave_thread_finished(self):
+        if self.sender() is self.subwave_thread:
+            self.subwave_thread = None
+
+    def _on_subwave_unavailable(self):
+        self.subwave_api_base = None
+        self._current_subwave_track = None
+        self.subwave_detail_label.setText("")
+        self.next_track_label.setText("")
+        self.like_btn.setEnabled(False)
+        self.like_btn.setText("☆ Like")
+
+    def _on_subwave_now_playing(self, payload):
+        if self.current_idx is None:
+            return
+        station = self.stations[self.current_idx]
+        if "(SUB/WAVE)" not in station["name"] and "(SUB/WAVE)" not in self.name_label.text():
+            self.name_label.setText(f'{self.name_label.text()} (SUB/WAVE)')
+
+        now = payload.get("now_playing") or {}
+        artist = (now.get("artist") or "").strip()
+        title = (now.get("title") or "").strip()
+        if artist and title:
+            self._current_subwave_track = {"artist": artist, "title": title}
+            details = [d for d in (now.get("genre"), now.get("musicalKey"), now.get("bpm")) if d]
+            self.subwave_detail_label.setText(" · ".join(str(d) for d in details))
+            self.like_btn.setEnabled(True)
+            liked = self._liked_key(artist, title) in self.liked_tracks
+            self.like_btn.setText("★ Liked" if liked else "☆ Like")
+        else:
+            self._current_subwave_track = None
+            self.subwave_detail_label.setText("")
+            self.like_btn.setEnabled(False)
+            self.like_btn.setText("☆ Like")
+
+        state = payload.get("state") or {}
+        upcoming = state.get("upcoming") or []
+        if upcoming:
+            nxt = upcoming[0]
+            nxt_artist = (nxt.get("artist") or "").strip()
+            nxt_title = (nxt.get("title") or "").strip()
+            label = " - ".join(p for p in (nxt_artist, nxt_title) if p)
+            self.next_track_label.setText(f"Next: {label}" if label else "")
+        else:
+            self.next_track_label.setText("")
+
+    def _on_like_clicked(self):
+        track = self._current_subwave_track
+        if not track:
+            return
+        key = self._liked_key(track["artist"], track["title"])
+        if key in self.liked_tracks:
+            self.liked_tracks.discard(key)
+            self.like_btn.setText("☆ Like")
+        else:
+            self.liked_tracks.add(key)
+            self.like_btn.setText("★ Liked")
+            self._send_subwave_like_request(track["artist"], track["title"])
+        self._save_liked_tracks()
+
+    def _send_subwave_like_request(self, artist, title):
+        if not self.subwave_api_base:
+            return
+        thread = SubwaveRequestThread(self.subwave_api_base, f"more like {artist} - {title}")
+        self._subwave_request_threads.append(thread)
+
+        def _cleanup(t=thread):
+            if t in self._subwave_request_threads:
+                self._subwave_request_threads.remove(t)
+
+        thread.finished.connect(_cleanup)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    def _stop_subwave_request_threads(self):
+        threads = list(self._subwave_request_threads)
+        self._subwave_request_threads.clear()
+        for thread in threads:
+            try:
+                thread.stop()
+                thread.wait(2000)
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(500)
+            except RuntimeError:
+                pass  # underlying C++ object was already deleted - nothing to do
 
     def _start_metadata_thread(self, url):
         self._stop_metadata_thread()
@@ -2566,6 +2829,13 @@ class MainWindow(QMainWindow):
         self.current_idx = None
         self._playback_generation += 1  # invalidate any pending auto-reconnect retry
         self._stop_metadata_thread()
+        self._stop_subwave_thread()
+        self._stop_subwave_request_threads()
+        self._current_subwave_track = None
+        self.subwave_detail_label.setText("")
+        self.next_track_label.setText("")
+        self.like_btn.setEnabled(False)
+        self.like_btn.setText("☆ Like")
         self._stop_lookup_thread()
         self._stop_artist_image_thread()
         self._pending_notification_artist = None
@@ -2753,6 +3023,8 @@ class MainWindow(QMainWindow):
         # platforms (like Windows) where this isn't an issue.
         self.tray.hide()
         self._stop_metadata_thread()
+        self._stop_subwave_thread()
+        self._stop_subwave_request_threads()
         self._stop_lookup_thread()
         self._stop_artist_image_thread()
         self._stop_album_art_thread()
