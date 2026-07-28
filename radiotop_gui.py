@@ -473,8 +473,8 @@ class _CancellableRequestThread(QThread):
 class SubwaveNowPlayingThread(_CancellableRequestThread):
     """Polls a SUB/WAVE station's own HTTP API (GET /now-playing + GET
     /state, both unauthenticated) for richer now-playing metadata than ICY
-    tags give us - genre/BPM/key/mood, the DJ persona, and the upcoming
-    queue for a "next track" display. Polled every POLL_INTERVAL seconds,
+    tags give us - genre, the DJ persona, and the upcoming queue for a
+    "next track" display. Polled every POLL_INTERVAL seconds,
     matching the interval SUB/WAVE's own web player polls at. If the first
     couple of polls fail (wrong port, not a SUB/WAVE station, API down),
     unavailable() fires once and the thread exits - there's no point
@@ -2153,8 +2153,7 @@ class MainWindow(QMainWindow):
         title = (now.get("title") or "").strip()
         if artist and title:
             self._current_subwave_track = {"artist": artist, "title": title}
-            details = [d for d in (now.get("genre"), now.get("musicalKey"), now.get("bpm")) if d]
-            self.subwave_detail_label.setText(" · ".join(str(d) for d in details))
+            self.subwave_detail_label.setText(str(now.get("genre") or ""))
             self.like_btn.setEnabled(True)
             liked = self._liked_key(artist, title) in self.liked_tracks
             self.like_btn.setText("★ Liked" if liked else "☆ Like")
