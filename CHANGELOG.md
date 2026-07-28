@@ -2,11 +2,15 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.31] - 2026-07-28
+
+- Dropped BPM/key from the SUB/WAVE now-playing detail line, keeping genre only.
+
 ## [0.30] - 2026-07-28
 
-- Added SUB/WAVE station integration: richer now-playing metadata (genre) and a "Next"
-  track label pulled from a SUB/WAVE station's own API, plus a Like button that nudges
-  the station's DJ toward similar tracks.
+- Added SUB/WAVE station integration: richer now-playing metadata (genre/key/BPM) and a
+  "Next" track label pulled from a SUB/WAVE station's own API, plus a Like button that
+  nudges the station's DJ toward similar tracks.
 
 ## [0.29] - 2026-07-24
 
