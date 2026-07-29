@@ -1,6 +1,6 @@
 import urllib.error
 
-from radiotop_gui import SimilarTracksThread
+from threads import SimilarTracksThread
 
 
 class _FakeResponse:

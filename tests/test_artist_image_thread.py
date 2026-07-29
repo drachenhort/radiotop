@@ -1,7 +1,7 @@
 import json
 import urllib.error
 
-from radiotop_gui import ArtistImageThread
+from threads import ArtistImageThread
 
 
 class _FakeResponse:
