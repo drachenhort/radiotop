@@ -25,7 +25,7 @@ def test_run_uses_deezer_first_when_artist_and_title_present(monkeypatch, qapp):
             return _json_response({"data": [{"album": {"cover_xl": "https://deezer.example/cover.jpg"}}]})
         return _FakeResponse(b"deezer-cover-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg", "Radiohead", "Creep")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -42,7 +42,7 @@ def test_run_falls_back_to_cover_art_archive_when_deezer_misses(monkeypatch, qap
         assert req.full_url == "https://coverartarchive.org/release/mbid-123/front-500"
         return _FakeResponse(b"cover-art-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg", "Radiohead", "Creep")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -58,7 +58,7 @@ def test_run_uses_cover_art_archive_when_mbid_present(monkeypatch, qapp):
         calls.append(req.full_url)
         return _FakeResponse(b"cover-art-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -74,7 +74,7 @@ def test_run_falls_back_to_itunes_when_cover_art_archive_misses(monkeypatch, qap
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
         return _FakeResponse(b"itunes-art-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -88,7 +88,7 @@ def test_run_uses_itunes_when_no_mbid(monkeypatch, qapp):
         assert req.full_url == "https://example.com/itunes.jpg"
         return _FakeResponse(b"itunes-art-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = AlbumArtThread("", "https://example.com/itunes.jpg")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -101,7 +101,7 @@ def test_run_emits_not_found_when_all_sources_miss(monkeypatch, qapp):
     def _raise(req, timeout=None):
         raise urllib.error.URLError("boom")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg")
     not_found_calls = []
     thread.not_found.connect(lambda: not_found_calls.append(True))

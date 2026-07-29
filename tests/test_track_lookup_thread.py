@@ -49,7 +49,7 @@ def test_query_musicbrainz_parses_best_match(monkeypatch):
         ]
     }
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time")
@@ -79,7 +79,7 @@ def test_query_musicbrainz_falls_back_to_top_tag_when_no_genres(monkeypatch):
         ]
     }
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Someone - Track")
@@ -91,7 +91,7 @@ def test_query_musicbrainz_falls_back_to_top_tag_when_no_genres(monkeypatch):
 
 def test_query_musicbrainz_returns_none_when_no_recordings(monkeypatch):
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse({"recordings": []}),
     )
     thread = TrackLookupThread("Artist - Title")
@@ -102,7 +102,7 @@ def test_query_musicbrainz_returns_none_on_request_failure(monkeypatch):
     def _raise(req, timeout=None):
         raise urllib.error.URLError("boom")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = TrackLookupThread("Artist - Title")
     assert thread._query_musicbrainz("Artist", "Title") is None
 
@@ -130,7 +130,7 @@ def test_query_lastfm_parses_success(monkeypatch):
         }
     }
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time", lastfm_api_key="key123")
@@ -142,7 +142,7 @@ def test_query_lastfm_parses_success(monkeypatch):
 def test_query_lastfm_reports_api_error(monkeypatch):
     payload = {"error": 6, "message": "Track not found"}
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Artist - Title", lastfm_api_key="key123")
@@ -155,7 +155,7 @@ def test_query_lastfm_reports_http_error(monkeypatch):
     def _raise(req, timeout=None):
         raise urllib.error.HTTPError("http://x", 403, "Forbidden", None, None)
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = TrackLookupThread("Artist - Title", lastfm_api_key="key123")
     result, error = thread._query_lastfm("Artist", "Title")
     assert result is None
@@ -260,7 +260,7 @@ def test_query_itunes_parses_first_result(monkeypatch):
         ]
     }
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time")
@@ -274,7 +274,7 @@ def test_query_itunes_parses_first_result(monkeypatch):
 
 def test_query_itunes_returns_none_when_no_results(monkeypatch):
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse({"results": []}),
     )
     thread = TrackLookupThread("Artist - Title")
@@ -285,6 +285,6 @@ def test_query_itunes_returns_none_on_request_failure(monkeypatch):
     def _raise(req, timeout=None):
         raise urllib.error.URLError("boom")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = TrackLookupThread("Artist - Title")
     assert thread._query_itunes("Artist", "Title") is None

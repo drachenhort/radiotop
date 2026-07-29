@@ -25,7 +25,7 @@ def test_run_uses_deezer_first_even_with_discogs_token(monkeypatch, qapp):
             return _json_response({"data": [{"picture_xl": "https://deezer.example/artist.jpg"}]})
         return _FakeResponse(b"deezer-photo-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = ArtistImageThread("Radiohead", lastfm_api_key="lfmkey", discogs_token="dtoken")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -45,7 +45,7 @@ def test_run_falls_back_to_discogs_when_deezer_misses(monkeypatch, qapp):
             return _json_response({"images": []})
         return _FakeResponse(b"discogs-photo-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = ArtistImageThread("Radiohead", discogs_token="dtoken")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -62,7 +62,7 @@ def test_run_falls_back_to_wikipedia_when_deezer_and_discogs_miss(monkeypatch, q
             return _json_response({"thumbnail": {"source": "https://wiki.example/photo.jpg"}})
         return _FakeResponse(b"wikipedia-photo-bytes")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = ArtistImageThread("Radiohead")
     captured = []
     thread.image_ready.connect(lambda data: captured.append(data))
@@ -75,7 +75,7 @@ def test_run_emits_not_found_when_all_sources_miss(monkeypatch, qapp):
     def _raise(req, timeout=None):
         raise urllib.error.URLError("boom")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = ArtistImageThread("Radiohead", lastfm_api_key="lfmkey", discogs_token="dtoken")
     not_found_calls = []
     thread.not_found.connect(lambda: not_found_calls.append(True))

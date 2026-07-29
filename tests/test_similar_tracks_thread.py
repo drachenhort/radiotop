@@ -26,7 +26,7 @@ def test_run_resolves_artist_and_returns_radio_tracks(monkeypatch, qapp):
             {"title": "Creep", "artist": {"name": "Radiohead"}},
         ]}))
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = SimilarTracksThread("Radiohead", "15 Step")
     captured = []
     thread.results_ready.connect(lambda tracks: captured.append(tracks))
@@ -42,7 +42,7 @@ def test_run_emits_empty_list_when_search_finds_no_artist(monkeypatch, qapp):
     def _urlopen(req, timeout=None):
         return _FakeResponse(_json_bytes({"data": []}))
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = SimilarTracksThread("Nobody", "Nothing")
     captured = []
     thread.results_ready.connect(lambda tracks: captured.append(tracks))
@@ -55,7 +55,7 @@ def test_run_emits_empty_list_on_network_error(monkeypatch, qapp):
     def _raise(req, timeout=None):
         raise urllib.error.URLError("boom")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _raise)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
     thread = SimilarTracksThread("Radiohead", "15 Step")
     captured = []
     thread.results_ready.connect(lambda tracks: captured.append(tracks))
@@ -81,7 +81,7 @@ def test_run_widens_with_related_artists_top_tracks(monkeypatch, qapp):
             return _FakeResponse(_json_bytes({"data": [{"title": "C", "artist": {"name": "Related3"}}]}))
         raise AssertionError(f"unexpected URL {url}")
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = SimilarTracksThread("Main", "Song", widen=True)
     captured = []
     thread.results_ready.connect(lambda tracks: captured.append(tracks))
@@ -101,7 +101,7 @@ def test_run_deduplicates_and_caps_at_max_tracks(monkeypatch, qapp):
         tracks = [{"title": "Same", "artist": {"name": "X"}} for _ in range(30)]
         return _FakeResponse(_json_bytes({"data": tracks}))
 
-    monkeypatch.setattr("radiotop_gui.urllib.request.urlopen", _urlopen)
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
     thread = SimilarTracksThread("X", "Y")
     captured = []
     thread.results_ready.connect(lambda tracks: captured.append(tracks))

@@ -28,7 +28,7 @@ class _FakeResponse:
 # ------------------------------------------------------- IcyMetadataThread
 def test_poll_once_emits_station_name_from_icy_name_header(monkeypatch, qapp):
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse({"icy-name": "Best Radio Ever"}),
     )
     thread = IcyMetadataThread("http://example.com:7700/stream.mp3")
@@ -40,7 +40,7 @@ def test_poll_once_emits_station_name_from_icy_name_header(monkeypatch, qapp):
 
 def test_poll_once_does_not_emit_when_icy_name_missing(monkeypatch, qapp):
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse({}),
     )
     thread = IcyMetadataThread("http://example.com:7700/stream.mp3")
@@ -52,7 +52,7 @@ def test_poll_once_does_not_emit_when_icy_name_missing(monkeypatch, qapp):
 
 def test_poll_once_only_emits_station_name_once_per_thread(monkeypatch, qapp):
     monkeypatch.setattr(
-        "radiotop_gui.urllib.request.urlopen",
+        "threads.urllib.request.urlopen",
         lambda req, timeout=None: _FakeResponse({"icy-name": "Best Radio Ever", "icy-metaint": "16000"}),
     )
     thread = IcyMetadataThread("http://example.com:7700/stream.mp3")
