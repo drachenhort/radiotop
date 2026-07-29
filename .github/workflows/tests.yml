@@ -23,9 +23,16 @@ jobs:
           python-version: '3.12'
 
       - name: Install system dependencies
-        # PySide6.QtMultimedia dlopens libpulse at import time even under
-        # QT_QPA_PLATFORM=offscreen; ubuntu-latest doesn't ship it.
-        run: sudo apt-get update && sudo apt-get install -y libpulse0
+        # PySide6 dlopens a chunk of the normal Linux desktop/media stack at
+        # import time even under QT_QPA_PLATFORM=offscreen (libpulse, EGL,
+        # GL, xkbcommon, ...), none of which ubuntu-latest ships by default.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libnss3 libopengl0
 
       - name: Install dependencies
         run: |
