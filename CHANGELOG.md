@@ -2,6 +2,15 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.35] - 2026-07-29
+
+- No user-facing changes. Split the single-file `radiotop_gui.py` into modules
+  (`threads.py`, `stream_proxy.py`, `dialogs.py`, `util.py`, `enrichment_mixin.py`) for
+  maintainability, with `radiotop_gui.py` now holding just `MainWindow` and the entry point.
+- Added a CI workflow that runs the pytest suite on every push and pull request against `main`.
+- Added a Linux build workflow (mirroring the existing Windows/macOS ones) that builds a
+  standalone RadioTop executable via PyInstaller and attaches it to GitHub Releases.
+
 ## [0.34] - 2026-07-28
 
 - Added BPM and Key to the Track Info window for SUB/WAVE stations, attributed to SUB/WAVE
