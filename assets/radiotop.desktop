@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=RadioTop
+Comment=A simple internet radio player
+Exec=/path/to/RadioTop-linux
+Icon=/path/to/radiotop.png
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=RadioTop

@@ -55,6 +55,17 @@ cd radiotop
 pip install --user PySide6
 ```
 
+### Linux (prebuilt executable)
+
+A prebuilt standalone `RadioTop-linux.tar.gz` is attached to each [Release](https://github.com/drachenhort/radiotop/releases) (built by `build-linux.yml` via PyInstaller) - no Python or `pip install` needed:
+
+```bash
+tar xzf RadioTop-linux.tar.gz
+./RadioTop-linux
+```
+
+The archive also includes `radiotop.desktop` and `radiotop.png`. Unlike a Windows `.exe`, a Linux ELF binary has no equivalent of an embedded icon resource, so the taskbar/window icon at runtime comes entirely from the app itself calling `setWindowIcon()` (already the case here - nothing extra needed to see it while the app is running). To get RadioTop into your KDE/GNOME application menu with its icon too (rather than only running it from a terminal or a manually-created launcher), edit `radiotop.desktop`'s `Exec=`/`Icon=` lines to the absolute paths where you extracted `RadioTop-linux` and `radiotop.png`, copy it to `~/.local/share/applications/`, then log out/in (or run `kbuildsycoca6`/`update-desktop-database ~/.local/share/applications` on KDE/GNOME respectively) to refresh the menu.
+
 ### Windows 10/11
 
 See **[INSTALL_WINDOWS.md](INSTALL_WINDOWS.md)** for the full walkthrough (prebuilt `.exe`, automated `install_windows.ps1` script, or manual setup). Quick version, using the automated script:
@@ -129,6 +140,7 @@ radiotop_gui.py       # the app
 assets/
   radiotop.png         # runtime app/tray icon (cross-platform)
   radiotop.ico         # Windows .exe icon, used by radiotop.spec
+  radiotop.desktop     # Linux menu entry template, bundled into RadioTop-linux.tar.gz
 radiotop.spec          # PyInstaller build spec for a standalone Windows .exe
 install_windows.ps1    # automated Windows 10/11 install/uninstall script
 INSTALL_WINDOWS.md      # detailed Windows install guide

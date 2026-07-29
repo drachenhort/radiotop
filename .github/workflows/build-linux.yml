@@ -73,10 +73,15 @@ jobs:
         run: pyinstaller radiotop.spec
 
       - name: Rename and package the binary
+        # Bundles the .desktop file and icon alongside the binary so users
+        # can set up a menu entry without also cloning the repo - see the
+        # "Linux (prebuilt executable)" section of the README.
         run: |
           mv dist/RadioTop dist/RadioTop-linux
           chmod +x dist/RadioTop-linux
-          tar -C dist -czf dist/RadioTop-linux.tar.gz RadioTop-linux
+          cp assets/radiotop.desktop dist/radiotop.desktop
+          cp assets/radiotop.png dist/radiotop.png
+          tar -C dist -czf dist/RadioTop-linux.tar.gz RadioTop-linux radiotop.desktop radiotop.png
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
