@@ -2,6 +2,13 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.38] - 2026-07-29
+
+- Fixed the 0.37 release build itself: the Windows/macOS/Linux build workflows installed
+  `PySide6 pyinstaller` directly instead of `requirements.txt`, so `certifi` was never actually
+  bundled into the 0.37 executables and the "unable to get local issuer certificate" fix didn't
+  take effect. Workflows now install from `requirements.txt`.
+
 ## [0.37] - 2026-07-29
 
 - Fixed HTTPS requests (update checks, MusicBrainz/Last.fm/Discogs/iTunes/Deezer lookups) failing
