@@ -15,11 +15,16 @@ from urllib.parse import urlparse, urlunparse
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle
 
+from threads import _SSL_CONTEXT
+
 
 def _fetch_json(req, timeout=10):
     """Request -> urlopen -> JSON-decode, the exact sequence repeated by
-    nearly every network call in this file."""
-    resp = urllib.request.urlopen(req, timeout=timeout)
+    nearly every network call in this file. Passes threads._SSL_CONTEXT
+    (pinned to certifi's CA bundle) for the same reason every urlopen()
+    call in threads.py does - see CLAUDE.md's "Notes on non-obvious
+    behavior"."""
+    resp = urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT)
     return json.loads(resp.read().decode("utf-8"))
 
 

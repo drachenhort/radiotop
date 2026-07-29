@@ -50,7 +50,7 @@ def test_query_musicbrainz_parses_best_match(monkeypatch):
     }
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time")
     result = thread._query_musicbrainz("Daft Punk", "One More Time")
@@ -80,7 +80,7 @@ def test_query_musicbrainz_falls_back_to_top_tag_when_no_genres(monkeypatch):
     }
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Someone - Track")
     result = thread._query_musicbrainz("Someone", "Track")
@@ -92,14 +92,14 @@ def test_query_musicbrainz_falls_back_to_top_tag_when_no_genres(monkeypatch):
 def test_query_musicbrainz_returns_none_when_no_recordings(monkeypatch):
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse({"recordings": []}),
+        lambda req, timeout=None, **kwargs: _FakeResponse({"recordings": []}),
     )
     thread = TrackLookupThread("Artist - Title")
     assert thread._query_musicbrainz("Artist", "Title") is None
 
 
 def test_query_musicbrainz_returns_none_on_request_failure(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.URLError("boom")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
@@ -131,7 +131,7 @@ def test_query_lastfm_parses_success(monkeypatch):
     }
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time", lastfm_api_key="key123")
     result, error = thread._query_lastfm("Daft Punk", "One More Time")
@@ -143,7 +143,7 @@ def test_query_lastfm_reports_api_error(monkeypatch):
     payload = {"error": 6, "message": "Track not found"}
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Artist - Title", lastfm_api_key="key123")
     result, error = thread._query_lastfm("Artist", "Title")
@@ -152,7 +152,7 @@ def test_query_lastfm_reports_api_error(monkeypatch):
 
 
 def test_query_lastfm_reports_http_error(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.HTTPError("http://x", 403, "Forbidden", None, None)
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
@@ -261,7 +261,7 @@ def test_query_itunes_parses_first_result(monkeypatch):
     }
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = TrackLookupThread("Daft Punk - One More Time")
     result = thread._query_itunes("Daft Punk", "One More Time")
@@ -275,14 +275,14 @@ def test_query_itunes_parses_first_result(monkeypatch):
 def test_query_itunes_returns_none_when_no_results(monkeypatch):
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse({"results": []}),
+        lambda req, timeout=None, **kwargs: _FakeResponse({"results": []}),
     )
     thread = TrackLookupThread("Artist - Title")
     assert thread._query_itunes("Artist", "Title") is None
 
 
 def test_query_itunes_returns_none_on_request_failure(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.URLError("boom")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)

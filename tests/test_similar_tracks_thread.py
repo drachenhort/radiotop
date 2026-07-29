@@ -17,7 +17,7 @@ def _json_bytes(obj):
 
 
 def test_run_resolves_artist_and_returns_radio_tracks(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "/search?" in req.full_url:
             return _FakeResponse(_json_bytes({"data": [{"artist": {"id": 42}}]}))
         assert "/artist/42/radio" in req.full_url
@@ -39,7 +39,7 @@ def test_run_resolves_artist_and_returns_radio_tracks(monkeypatch, qapp):
 
 
 def test_run_emits_empty_list_when_search_finds_no_artist(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         return _FakeResponse(_json_bytes({"data": []}))
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
@@ -52,7 +52,7 @@ def test_run_emits_empty_list_when_search_finds_no_artist(monkeypatch, qapp):
 
 
 def test_run_emits_empty_list_on_network_error(monkeypatch, qapp):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.URLError("boom")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)
@@ -65,7 +65,7 @@ def test_run_emits_empty_list_on_network_error(monkeypatch, qapp):
 
 
 def test_run_widens_with_related_artists_top_tracks(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         url = req.full_url
         if "/search?" in url:
             return _FakeResponse(_json_bytes({"data": [{"artist": {"id": 1}}]}))
@@ -95,7 +95,7 @@ def test_run_widens_with_related_artists_top_tracks(monkeypatch, qapp):
 
 
 def test_run_deduplicates_and_caps_at_max_tracks(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "/search?" in req.full_url:
             return _FakeResponse(_json_bytes({"data": [{"artist": {"id": 1}}]}))
         tracks = [{"title": "Same", "artist": {"name": "X"}} for _ in range(30)]

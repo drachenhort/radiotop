@@ -11,6 +11,7 @@ lookup, artist image, album art, similar tracks).
 import json
 import re
 import socket
+import ssl
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import urllib.error
@@ -20,6 +21,28 @@ from urllib.parse import quote, urlencode
 from PySide6.QtCore import QThread, Signal
 
 GITHUB_REPO = "drachenhort/radiotop"
+
+
+def _ssl_context():
+    """Builds an SSLContext pinned to certifi's CA bundle rather than
+    letting OpenSSL fall back to its own compiled-in default cert
+    path/dir. In a PyInstaller build, the bundled libssl still carries
+    the *build machine's* default paths (e.g. a distro's /etc/ssl/certs
+    layout), which may not exist - or may be empty - on whatever machine
+    the frozen exe actually runs on, causing every HTTPS request to fail
+    with "unable to get local issuer certificate" even though the
+    running system has its own perfectly good trust store. Falls back to
+    ssl's own default context if certifi isn't installed (e.g. running
+    from source in an environment without it)."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+_SSL_CONTEXT = _ssl_context()
 
 TITLE_RE = re.compile(rb"StreamTitle='([^']*)';")
 
@@ -97,7 +120,7 @@ class IcyMetadataThread(QThread):
         headers = {"Icy-MetaData": "1", "User-Agent": RADIOTOP_USER_AGENT}
         req = urllib.request.Request(self.url, headers=headers)
         try:
-            resp = urllib.request.urlopen(req, timeout=15)
+            resp = urllib.request.urlopen(req, timeout=15, context=_SSL_CONTEXT)
         except Exception:
             return ""  # transient failure - the outer loop will retry next interval
 
@@ -197,7 +220,7 @@ class _CancellableRequestThread(QThread):
         of opening the connection at all if stop() was already called."""
         if self._stop_event.is_set():
             return None
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT)
         with self._resp_lock:
             if self._stop_event.is_set():
                 resp.close()

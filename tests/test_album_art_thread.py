@@ -19,7 +19,7 @@ def _json_response(obj):
 def test_run_uses_deezer_first_when_artist_and_title_present(monkeypatch, qapp):
     calls = []
 
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         calls.append(req.full_url)
         if "api.deezer.com/search/track" in req.full_url:
             return _json_response({"data": [{"album": {"cover_xl": "https://deezer.example/cover.jpg"}}]})
@@ -36,7 +36,7 @@ def test_run_uses_deezer_first_when_artist_and_title_present(monkeypatch, qapp):
 
 
 def test_run_falls_back_to_cover_art_archive_when_deezer_misses(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "api.deezer.com" in req.full_url:
             return _json_response({"data": []})
         assert req.full_url == "https://coverartarchive.org/release/mbid-123/front-500"
@@ -54,7 +54,7 @@ def test_run_falls_back_to_cover_art_archive_when_deezer_misses(monkeypatch, qap
 def test_run_uses_cover_art_archive_when_mbid_present(monkeypatch, qapp):
     calls = []
 
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         calls.append(req.full_url)
         return _FakeResponse(b"cover-art-bytes")
 
@@ -69,7 +69,7 @@ def test_run_uses_cover_art_archive_when_mbid_present(monkeypatch, qapp):
 
 
 def test_run_falls_back_to_itunes_when_cover_art_archive_misses(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "coverartarchive.org" in req.full_url:
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
         return _FakeResponse(b"itunes-art-bytes")
@@ -84,7 +84,7 @@ def test_run_falls_back_to_itunes_when_cover_art_archive_misses(monkeypatch, qap
 
 
 def test_run_uses_itunes_when_no_mbid(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         assert req.full_url == "https://example.com/itunes.jpg"
         return _FakeResponse(b"itunes-art-bytes")
 
@@ -98,7 +98,7 @@ def test_run_uses_itunes_when_no_mbid(monkeypatch, qapp):
 
 
 def test_run_emits_not_found_when_all_sources_miss(monkeypatch, qapp):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.URLError("boom")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)

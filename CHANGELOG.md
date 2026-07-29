@@ -2,6 +2,14 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.37] - 2026-07-29
+
+- Fixed HTTPS requests (update checks, MusicBrainz/Last.fm/Discogs/iTunes/Deezer lookups) failing
+  with "unable to get local issuer certificate" in the packaged executable on some Linux systems.
+  The bundled OpenSSL carried the build machine's compiled-in default CA path, which doesn't exist
+  on every machine the frozen exe runs on; every `urlopen()` call now uses an `SSLContext` pinned
+  to `certifi`'s CA bundle instead.
+
 ## [0.36] - 2026-07-29
 
 - Added a `.desktop` file (`assets/radiotop.desktop`) for KDE/GNOME application menu

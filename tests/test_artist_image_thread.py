@@ -19,7 +19,7 @@ def _json_response(obj):
 def test_run_uses_deezer_first_even_with_discogs_token(monkeypatch, qapp):
     calls = []
 
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         calls.append(req.full_url)
         if "api.deezer.com/search/artist" in req.full_url:
             return _json_response({"data": [{"picture_xl": "https://deezer.example/artist.jpg"}]})
@@ -36,7 +36,7 @@ def test_run_uses_deezer_first_even_with_discogs_token(monkeypatch, qapp):
 
 
 def test_run_falls_back_to_discogs_when_deezer_misses(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "api.deezer.com" in req.full_url:
             return _json_response({"data": []})
         if "discogs.com/database/search" in req.full_url:
@@ -55,7 +55,7 @@ def test_run_falls_back_to_discogs_when_deezer_misses(monkeypatch, qapp):
 
 
 def test_run_falls_back_to_wikipedia_when_deezer_and_discogs_miss(monkeypatch, qapp):
-    def _urlopen(req, timeout=None):
+    def _urlopen(req, timeout=None, **kwargs):
         if "api.deezer.com" in req.full_url:
             return _json_response({"data": []})
         if "wikipedia.org" in req.full_url:
@@ -72,7 +72,7 @@ def test_run_falls_back_to_wikipedia_when_deezer_and_discogs_miss(monkeypatch, q
 
 
 def test_run_emits_not_found_when_all_sources_miss(monkeypatch, qapp):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.URLError("boom")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)

@@ -41,7 +41,7 @@ def test_update_check_thread_reports_available_when_newer(monkeypatch):
     payload = {"tag_name": "0.99", "body": "notes", "html_url": "https://example.invalid/0.99"}
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = UpdateCheckThread("0.32")
     results = []
@@ -61,7 +61,7 @@ def test_update_check_thread_reports_unavailable_when_current(monkeypatch):
     payload = {"tag_name": "0.32", "body": "", "html_url": "https://example.invalid/0.32"}
     monkeypatch.setattr(
         "threads.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse(payload),
+        lambda req, timeout=None, **kwargs: _FakeResponse(payload),
     )
     thread = UpdateCheckThread("0.32")
     results = []
@@ -71,7 +71,7 @@ def test_update_check_thread_reports_unavailable_when_current(monkeypatch):
 
 
 def test_update_check_thread_reports_error_on_network_failure(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise OSError("network unreachable")
 
     monkeypatch.setattr("threads.urllib.request.urlopen", _raise)

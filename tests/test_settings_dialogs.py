@@ -16,7 +16,7 @@ class _FakeResponse:
 def test_lastfm_check_key_success(monkeypatch):
     monkeypatch.setattr(
         "dialogs.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse({"token": "abc"}),
+        lambda req, timeout=None, **kwargs: _FakeResponse({"token": "abc"}),
     )
     ok, message = LastfmSettingsDialog._check_key("valid-key")
     assert ok is True
@@ -26,7 +26,7 @@ def test_lastfm_check_key_success(monkeypatch):
 def test_lastfm_check_key_api_error(monkeypatch):
     monkeypatch.setattr(
         "dialogs.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse({"error": 10, "message": "Invalid API key"}),
+        lambda req, timeout=None, **kwargs: _FakeResponse({"error": 10, "message": "Invalid API key"}),
     )
     ok, message = LastfmSettingsDialog._check_key("bad-key")
     assert ok is False
@@ -34,7 +34,7 @@ def test_lastfm_check_key_api_error(monkeypatch):
 
 
 def test_lastfm_check_key_http_error(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.HTTPError("http://x", 403, "Forbidden", None, None)
 
     monkeypatch.setattr("dialogs.urllib.request.urlopen", _raise)
@@ -47,7 +47,7 @@ def test_lastfm_check_key_http_error(monkeypatch):
 def test_discogs_check_token_success(monkeypatch):
     monkeypatch.setattr(
         "dialogs.urllib.request.urlopen",
-        lambda req, timeout=None: _FakeResponse({"username": "someuser"}),
+        lambda req, timeout=None, **kwargs: _FakeResponse({"username": "someuser"}),
     )
     ok, message = DiscogsSettingsDialog._check_token("valid-token")
     assert ok is True
@@ -55,7 +55,7 @@ def test_discogs_check_token_success(monkeypatch):
 
 
 def test_discogs_check_token_invalid(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.HTTPError("http://x", 401, "Unauthorized", None, None)
 
     monkeypatch.setattr("dialogs.urllib.request.urlopen", _raise)
@@ -65,7 +65,7 @@ def test_discogs_check_token_invalid(monkeypatch):
 
 
 def test_discogs_check_token_other_http_error(monkeypatch):
-    def _raise(req, timeout=None):
+    def _raise(req, timeout=None, **kwargs):
         raise urllib.error.HTTPError("http://x", 500, "Server Error", None, None)
 
     monkeypatch.setattr("dialogs.urllib.request.urlopen", _raise)

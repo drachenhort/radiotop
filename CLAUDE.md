@@ -12,7 +12,7 @@ whole codebase (tests live separately under `tests/`, see Testing below).
 ## Running
 
 ```bash
-pip install --user PySide6
+pip install --user -r requirements.txt
 python3 radiotop_gui.py
 ```
 
@@ -140,3 +140,9 @@ they're used (see `MainWindow.__init__`, `_load_custom_stations` / `_save_custom
   on a stalled connection from another thread.
 - Station URLs are normalized (port + filename defaults) independently per-field — a URL missing only
   the port gets just the port added, and vice versa — see `_normalize_station_url()`.
+- Every `urllib.request.urlopen()` call in `threads.py` passes `context=_SSL_CONTEXT`, an `SSLContext`
+  pinned to `certifi`'s CA bundle. In a PyInstaller build, the bundled OpenSSL still carries the build
+  machine's compiled-in default cert path, which may not exist (or be empty) on whatever machine the
+  frozen exe actually runs on — without this, HTTPS requests fail there with "unable to get local
+  issuer certificate" even though the running system has its own valid trust store. This is why
+  `certifi` is a listed dependency in `requirements.txt` even though nothing else in the app needs it.
