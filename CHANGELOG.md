@@ -2,6 +2,13 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.36] - 2026-07-29
+
+- Added a `.desktop` file (`assets/radiotop.desktop`) for KDE/GNOME application menu
+  integration on Linux, bundled into `RadioTop-linux.tar.gz` alongside `radiotop.png` so
+  users don't need to clone the repo to set up a menu entry. See the README's
+  "Linux (prebuilt executable)" section for setup steps.
+
 ## [0.35] - 2026-07-29
 
 - No user-facing changes. Split the single-file `radiotop_gui.py` into modules
