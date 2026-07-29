@@ -1,11 +1,16 @@
-name: Build Windows executable
+name: Build Linux executable
 
-# Builds RadioTop.exe on an actual Windows runner (PyInstaller can't
-# cross-compile - a Windows .exe has to be built on Windows).
+# Builds a standalone RadioTop executable on an actual Linux runner
+# (PyInstaller can't cross-compile - a Linux binary has to be built on
+# Linux). Produces dist/RadioTop: a single ELF binary bundling Python, Qt,
+# and all of RadioTop's own modules - no separate install step needed on
+# the user's machine, just download and run (though the user's desktop
+# still needs its own Qt6 multimedia backend, same as running from source
+# - see README/CLAUDE.md).
 #
 # - Runs automatically whenever the app code, icon, or build spec change.
 # - Can also be run manually from the Actions tab ("Run workflow").
-# - When triggered by publishing a GitHub Release, the built .exe is
+# - When triggered by publishing a GitHub Release, the built binary is
 #   attached to that release automatically.
 #
 # Either way, the result is downloadable from the workflow run's
@@ -24,7 +29,7 @@ on:
       - 'util.py'
       - 'radiotop.spec'
       - 'assets/**'
-      - '.github/workflows/build-windows.yml'
+      - '.github/workflows/build-linux.yml'
   workflow_dispatch: {}
   release:
     types: [published]
@@ -37,13 +42,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
-      # actions/checkout@v6, actions/setup-python@v6, actions/upload-artifact@v6,
-      # and softprops/action-gh-release@v3 are the first major versions of each
-      # action built on the Node 24 runtime (GitHub deprecated Node 20 for
-      # Actions in 2026). Using anything older triggers a
-      # "Node.js 20 is deprecated" warning on every run.
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -52,23 +52,41 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install system dependencies
+        # Present so PyInstaller's ldd-based dependency scan finds (and
+        # bundles) the usual desktop-Qt runtime libs rather than skipping
+        # them with "Library not found" warnings.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpulse0 libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libnss3 libopengl0
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install PySide6 pyinstaller
 
-      - name: Build RadioTop.exe
+      - name: Build RadioTop
         run: pyinstaller radiotop.spec
+
+      - name: Rename and package the binary
+        run: |
+          mv dist/RadioTop dist/RadioTop-linux
+          chmod +x dist/RadioTop-linux
+          tar -C dist -czf dist/RadioTop-linux.tar.gz RadioTop-linux
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: RadioTop-windows
-          path: dist/RadioTop.exe
+          name: RadioTop-linux
+          path: dist/RadioTop-linux.tar.gz
           if-no-files-found: error
 
       - name: Attach to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/RadioTop.exe
+          files: dist/RadioTop-linux.tar.gz

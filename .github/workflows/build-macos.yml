@@ -26,6 +26,11 @@ on:
     branches: [main]
     paths:
       - 'radiotop_gui.py'
+      - 'threads.py'
+      - 'stream_proxy.py'
+      - 'dialogs.py'
+      - 'enrichment_mixin.py'
+      - 'util.py'
       - 'radiotop.spec'
       - 'assets/**'
       - '.github/workflows/build-macos.yml'
