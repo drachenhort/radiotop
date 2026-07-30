@@ -2,6 +2,13 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.39] - 2026-07-30
+
+- Fixed RadioTop sometimes blocking system logout/reboot: closing the main window while the tray
+  icon is visible shows a blocking "Quit or Minimize to Tray?" dialog, and a session manager's
+  logout/reboot close request could trigger it with nobody able to click it. The app now quits
+  cleanly (no dialog) in response to a session manager's close request or a SIGTERM/SIGINT.
+
 ## [0.38] - 2026-07-29
 
 - Fixed the 0.37 release build itself: the Windows/macOS/Linux build workflows installed

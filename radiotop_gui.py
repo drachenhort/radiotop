@@ -35,6 +35,7 @@ Notes:
 
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -90,7 +91,7 @@ from util import (
 
 APP_ORG = "radiotop"
 APP_NAME = "RadioTop"
-APP_VERSION = "0.38"  # bumped alongside the CHANGELOG entry at release time
+APP_VERSION = "0.39"  # bumped alongside the CHANGELOG entry at release time
 
 UPDATE_CHECK_INTERVAL_SECS = 24 * 60 * 60  # don't auto-check more than once a day
 
@@ -1163,6 +1164,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             QDesktopServices.openUrl(QUrl(html_url))
 
     def quit_app(self):
+        if self._quitting:
+            return
         self._quitting = True
         # An active tray icon can keep the process alive on some desktops
         # (e.g. KDE Plasma's DBus-based StatusNotifierItem) even after
@@ -1229,6 +1232,16 @@ def main():
 
     window = MainWindow()
     window.show()
+
+    # Quit cleanly (no blocking "Quit or Minimize to Tray?" dialog) when the
+    # OS asks us to close - either via a session manager's logout/reboot
+    # sequence (X11 XSMP's commitDataRequest) or a direct SIGTERM/SIGINT.
+    # Without this, closeEvent()'s modal can pop up during shutdown with
+    # nobody able to click it, which is what leaves the process running and
+    # blocks the reboot/logout.
+    app.commitDataRequest.connect(lambda _sm: window.quit_app())
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_args: QTimer.singleShot(0, window.quit_app))
 
     sys.exit(app.exec())
 
