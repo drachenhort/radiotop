@@ -579,7 +579,20 @@ class StationListDialog(QDialog):
             # currently-playing station's index needs to shift too, or it
             # ends up pointing at the wrong station.
             self.main.current_idx -= 1
+            # Also invalidate any pending auto-reconnect retry (mirrors
+            # stop_playback()'s own generation bump): _maybe_reconnect()
+            # captures the pre-shift index in a closure, and without this
+            # a reconnect already in flight would fire against that now-
+            # stale index once the shift above lands, playing the wrong
+            # station.
+            self.main._playback_generation += 1
         del self.main.stations[idx]
         self.main._save_custom_stations()
+        # Clear selection before rebuilding: refresh_list() restores
+        # selection by numeric index, and every row after the removed one
+        # has now shifted down - without this, the row that shifted into
+        # the removed row's old position ends up selected (and enabled for
+        # removal), risking a second click deleting the wrong station.
+        self.list_widget.setCurrentRow(-1)
         self.refresh_list()
         self.main._rebuild_stations_menu()

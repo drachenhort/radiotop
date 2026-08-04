@@ -16,6 +16,7 @@ class _StubMainWindow:
         self.stations = stations if stations is not None else []
         self.current_idx = None
         self._current_icy_name = None
+        self._playback_generation = 0
         self.play_index_calls = []
         self.save_calls = 0
         self.rebuild_menu_calls = 0
@@ -309,3 +310,42 @@ def test_remove_station_shifts_current_idx_down(qapp):
     dlg._remove_station()
     assert main.current_idx == 0  # shifted down since index 0 was removed
     assert main.stop_playback_calls == 0
+
+
+def test_remove_station_leaves_nothing_selected_after_removal(qapp):
+    # Regression test: removing a station used to leave the row that shifted
+    # into the removed row's old position selected (and enabled for removal),
+    # since refresh_list() restored selection by numeric index without
+    # accounting for the shift - risking a second click deleting the wrong
+    # station.
+    main = _StubMainWindow([
+        _station("Alpha", "http://a.example.com:7700/stream.mp3", custom=True),
+        _station("Beta", "http://b.example.com:7700/stream.mp3", custom=True),
+        _station("Gamma", "http://c.example.com:7700/stream.mp3", custom=True),
+    ])
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(1)  # select "Beta"
+    dlg._remove_station()
+
+    assert [main.stations[i]["name"] for i in range(len(main.stations))] == ["Alpha", "Gamma"]
+    assert dlg.list_widget.currentRow() == -1
+    assert dlg.remove_btn.isEnabled() is False
+
+
+def test_remove_station_shifting_current_idx_bumps_playback_generation(qapp):
+    # Regression test: a pending auto-reconnect (MainWindow._maybe_reconnect)
+    # captures the current station index and only re-checks it against
+    # _playback_generation before firing. Removing an earlier custom station
+    # shifts current_idx but, before this fix, left _playback_generation
+    # unchanged - so a reconnect already in flight would fire against the
+    # stale index once the shift happened, landing on the wrong station.
+    main = _StubMainWindow([
+        _station("Custom A", "http://a.example.com:7700/stream.mp3", custom=True),
+        _station("Currently Playing", "http://b.example.com:7700/stream.mp3", custom=False),
+    ])
+    main.current_idx = 1
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(0)  # select "Custom A" (index 0), which precedes the playing station
+    dlg._remove_station()
+    assert main.current_idx == 0
+    assert main._playback_generation == 1
