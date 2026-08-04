@@ -18,3 +18,8 @@ def test_select_output_device_index_defaults_to_zero_when_target_none():
 
 def test_select_output_device_index_defaults_to_zero_when_no_ids():
     assert select_output_device_index([], None) == 0
+
+
+def test_select_output_device_index_defaults_to_zero_when_target_empty_bytes():
+    ids = [b"aaa", b"bbb", b""]
+    assert select_output_device_index(ids, b"") == 0

@@ -80,7 +80,7 @@ def select_output_device_index(device_ids, target_id):
     to QSettings - MainWindow._refresh_output_devices resolves which one to
     pass in before calling this. Falls back to the first device in the list
     if target_id is None or isn't found."""
-    if target_id is not None:
+    if target_id:
         for i, device_id in enumerate(device_ids):
             if device_id == target_id:
                 return i
