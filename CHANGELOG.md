@@ -2,6 +2,14 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.43] - 2026-08-04
+
+- Fixed: on SUB/WAVE stations, the displayed track title could occasionally get stuck on an old
+  track even though SUB/WAVE's own dashboard already showed the current one - the title only ever
+  came from ICY metadata embedded in the audio stream, which is polled less often and can miss an
+  update. RadioTop now also uses SUB/WAVE's own now-playing API (already polled for genre/BPM) to
+  keep the title current.
+
 ## [0.42] - 2026-08-04
 
 - Fixed: switching stations, closing the track-info dialog, or quitting while a background
