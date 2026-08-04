@@ -73,6 +73,20 @@ def _normalize_station_url(url):
     return new_url, True
 
 
+def select_output_device_index(device_ids, target_id):
+    """Pick which audio output device index to select when (re)building the
+    device combo box. target_id is either the currently-selected device's id
+    (when preserving selection across a refresh) or the last device id saved
+    to QSettings - MainWindow._refresh_output_devices resolves which one to
+    pass in before calling this. Falls back to the first device in the list
+    if target_id is None or isn't found."""
+    if target_id is not None:
+        for i, device_id in enumerate(device_ids):
+            if device_id == target_id:
+                return i
+    return 0
+
+
 def _subwave_api_base(stream_url):
     """A SUB/WAVE station's HTTP API lives on the same origin as its stream
     URL, under /api (the bundled-Caddy production deploy puts the stream,

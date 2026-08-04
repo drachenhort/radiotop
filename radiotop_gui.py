@@ -87,6 +87,7 @@ from util import (
     _normalize_station_url,
     _resource_path,
     _subwave_api_base,
+    select_output_device_index,
 )
 
 APP_ORG = "radiotop"
@@ -1053,14 +1054,15 @@ class MainWindow(EnrichmentMixin, QMainWindow):
                 saved_id = saved_id.encode("latin-1", errors="ignore")
             current_id = bytes(saved_id) if saved_id else None
 
-        select_idx = 0
-        for i, dev in enumerate(devices):
+        device_ids = []
+        for dev in devices:
             label = dev.description()
             if not default_device.isNull() and bytes(dev.id()) == bytes(default_device.id()):
                 label += " (Default)"
             self.device_combo.addItem(label, dev)
-            if current_id and bytes(dev.id()) == current_id:
-                select_idx = i
+            device_ids.append(bytes(dev.id()))
+
+        select_idx = select_output_device_index(device_ids, current_id)
 
         self.device_combo.setCurrentIndex(select_idx)
         self._apply_output_device(self.device_combo.itemData(select_idx))
