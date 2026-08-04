@@ -139,6 +139,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.lookup_thread = None
         self.lookup_cache = {}
         self.last_lookup_title = None
+        self._current_display_title = None
         self.artist_image_thread = None
         self.artist_image_cache = {}
         self.last_image_artist = None
@@ -521,6 +522,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.player.play()
         self.name_label.setText(station["name"])
         self.track_label.setText("")
+        self._current_display_title = None
         self._pending_notification_artist = None
         self._show_notification("RadioTop - Station", station["name"])
         self.track_info_dialog.set_waiting()
@@ -621,6 +623,14 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             liked = self._liked_key(artist, title) in self.liked_tracks
             self.like_btn.setText("★ Liked" if liked else "☆ Like")
             self.track_info_dialog.set_subwave_details(now.get("bpm"), now.get("musicalKey"))
+            # SUB/WAVE's own API is a second, more reliable source for the
+            # current track than ICY metadata (parsed out of the audio
+            # stream itself, which can occasionally miss an update) - feed
+            # it through the same pipeline so it can also drive the main
+            # title label, metadata lookup, and notification. _on_track_title
+            # no-ops if this matches what's already displayed, so polling
+            # the same track repeatedly (every POLL_INTERVAL) is harmless.
+            self._on_track_title(f"{artist} - {title}")
         else:
             self._current_subwave_track = None
             self.subwave_detail_label.setText("")
@@ -771,6 +781,14 @@ class MainWindow(EnrichmentMixin, QMainWindow):
     NOTIFICATION_IMAGE_WAIT_MS = 1500
 
     def _on_track_title(self, title):
+        if title == self._current_display_title:
+            # Both IcyMetadataThread and SubwaveNowPlayingThread can report
+            # the current track (see _on_subwave_now_playing) - only apply
+            # it, re-run the lookup, and fire a notification once per actual
+            # track change, regardless of which source reported it or how
+            # many times it's polled.
+            return
+        self._current_display_title = title
         self._set_track_label(title)
         self.track_info_dialog.set_now_playing(title)
         self._lookup_track_info(title)
@@ -971,6 +989,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.last_similar_tracks_title = None
         self.name_label.setText("Nothing playing")
         self.track_label.setText("")
+        self._current_display_title = None
         self.track_info_dialog.set_no_track()
         self.station_dialog.refresh_list()
         self._rebuild_stations_menu()

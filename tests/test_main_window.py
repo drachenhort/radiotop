@@ -279,3 +279,100 @@ def test_configure_lastfm_key_does_nothing_when_no_track_playing(main_window_stu
     rt.MainWindow._configure_lastfm_key(stub)
 
     assert stub._fetch_artist_image_calls == []
+
+
+# --------------------------------------------------- subwave now playing
+def _rig_for_subwave_now_playing(stub):
+    stub.current_idx = 0
+    stub._subwave_detected = False
+    stub._current_subwave_track = None
+    stub._current_display_title = None
+    stub.liked_tracks = set()
+    stub.show_label = SimpleNamespace(setText=lambda t: None)
+    stub.subwave_detail_label = SimpleNamespace(setText=lambda t: None)
+    stub.next_track_label = SimpleNamespace(setText=lambda t: None)
+    stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
+    stub.track_label = SimpleNamespace(setText=lambda t: None)
+    stub.track_info_dialog = SimpleNamespace(
+        set_subwave_details=lambda bpm, key: None,
+        set_now_playing=lambda title: None,
+    )
+    stub._liked_key = lambda artist, title: rt.MainWindow._liked_key(artist, title)
+    stub._on_track_title = lambda title: rt.MainWindow._on_track_title(stub, title)
+    # Let the real _on_track_title run (that's the method under test here -
+    # specifically its dedup against _current_display_title) but stub out
+    # everything it delegates to, same as the direct _on_track_title tests
+    # below.
+    stub._set_track_label = lambda title, year=None: None
+    stub._lookup_track_info_calls = []
+    stub._lookup_track_info = lambda title: stub._lookup_track_info_calls.append(title)
+    stub._fetch_artist_image = lambda artist: None
+    stub._schedule_track_notification = lambda artist, body: None
+    stub._pending_notification_artist = None
+
+
+def _payload(artist, title):
+    return {"now_playing": {"nowPlaying": {"artist": artist, "title": title}}, "state": {}}
+
+
+def test_subwave_now_playing_drives_track_title(main_window_stub):
+    stub = main_window_stub
+    _rig_for_subwave_now_playing(stub)
+
+    rt.MainWindow._on_subwave_now_playing(stub, _payload("Some Artist", "Some Track"))
+
+    assert stub._lookup_track_info_calls == ["Some Artist - Some Track"]
+    assert stub._current_display_title == "Some Artist - Some Track"
+
+
+def test_subwave_now_playing_does_not_redrive_title_for_repeated_polls(main_window_stub):
+    # Regression test companion: SUB/WAVE is polled every few seconds, so
+    # the track-title pipeline must only re-run once the track actually
+    # changes - not on every poll of the same track.
+    stub = main_window_stub
+    _rig_for_subwave_now_playing(stub)
+    stub._current_display_title = "Some Artist - Some Track"  # already displayed (e.g. via ICY)
+
+    rt.MainWindow._on_subwave_now_playing(stub, _payload("Some Artist", "Some Track"))
+
+    assert stub._lookup_track_info_calls == []
+
+
+def test_subwave_now_playing_does_nothing_when_no_track_info(main_window_stub):
+    stub = main_window_stub
+    _rig_for_subwave_now_playing(stub)
+
+    rt.MainWindow._on_subwave_now_playing(stub, {"now_playing": {}, "state": {}})
+
+    assert stub._lookup_track_info_calls == []
+    assert stub._current_display_title is None
+
+
+def test_on_track_title_ignores_repeat_of_currently_displayed_title(main_window_stub):
+    stub = main_window_stub
+    stub._current_display_title = "Some Artist - Some Track"
+    stub._set_track_label = lambda title, year=None: None
+    stub.track_info_dialog = SimpleNamespace(set_now_playing=lambda title: None)
+    lookup_calls = []
+    stub._lookup_track_info = lambda title: lookup_calls.append(title)
+
+    rt.MainWindow._on_track_title(stub, "Some Artist - Some Track")
+
+    assert lookup_calls == []
+
+
+def test_on_track_title_applies_a_genuinely_new_title(main_window_stub):
+    stub = main_window_stub
+    stub._current_display_title = "Old Artist - Old Track"
+    stub._set_track_label = lambda title, year=None: None
+    stub.track_info_dialog = SimpleNamespace(set_now_playing=lambda title: None)
+    lookup_calls = []
+    stub._lookup_track_info = lambda title: lookup_calls.append(title)
+    stub._fetch_artist_image = lambda artist: None
+    stub._schedule_track_notification = lambda artist, body: None
+    stub._pending_notification_artist = None
+
+    rt.MainWindow._on_track_title(stub, "New Artist - New Track")
+
+    assert lookup_calls == ["New Artist - New Track"]
+    assert stub._current_display_title == "New Artist - New Track"
