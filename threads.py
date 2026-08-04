@@ -13,7 +13,7 @@ import re
 import socket
 import ssl
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import urllib.error
 import urllib.request
 from urllib.parse import quote, urlencode
@@ -75,6 +75,65 @@ def _deezer_artist_track_query(artist_name, track_title):
     return f'artist:"{artist_name}" track:"{track_title}"'
 
 
+# Shared pool for the sole purpose of making urlopen() calls interruptible
+# (see _cancellable_urlopen below) - separate from any ThreadPoolExecutor a
+# thread class creates for its own concurrent lookups (e.g. TrackLookupThread
+# querying MusicBrainz/iTunes/Last.fm at once), since those are a different
+# concern with their own lifetime (scoped to one run() call).
+_CONNECT_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="radiotop-connect")
+
+# How often _cancellable_urlopen re-checks stop_event while a connect is
+# still in flight on the pool. Short enough that stop() is noticed quickly;
+# long enough not to busy-loop.
+_CONNECT_POLL_INTERVAL = 0.2
+
+
+def _cancellable_urlopen(req, timeout, stop_event):
+    """Like urllib.request.urlopen(), but interruptible: a plain
+    urlopen(timeout=10) blocks in one uninterruptible call for up to the
+    full timeout, and there's no response object to shut down from another
+    thread until it returns - so calling stop() on a thread stuck
+    connecting to a stalled/firewalled host (no RST, just silence) has no
+    effect until that timeout elapses on its own.
+
+    Runs the actual urlopen() call on a background pool and polls its
+    future instead of blocking on it directly, so this function - and
+    therefore the QThread calling it - can return as soon as stop_event is
+    set, without waiting for the real network call to finish. That call
+    keeps running on the pool in the background until it naturally
+    completes or times out; if it eventually succeeds after this function
+    has already given up, the response is closed rather than left open
+    until garbage collection reclaims it (see _close_late_response).
+    Returns None if stop_event was set before the call completed;
+    otherwise returns the response (or raises whatever exception the real
+    urlopen() call raised, exactly as if it had been called directly)."""
+    future = _CONNECT_POOL.submit(urllib.request.urlopen, req, timeout=timeout, context=_SSL_CONTEXT)
+    while True:
+        if stop_event.is_set():
+            future.add_done_callback(_close_late_response)
+            return None
+        try:
+            return future.result(timeout=_CONNECT_POLL_INTERVAL)
+        except FutureTimeoutError:
+            continue
+
+
+def _close_late_response(future):
+    """Done-callback for a urlopen() future that _cancellable_urlopen gave
+    up waiting on (stop() fired first): if it went on to succeed anyway,
+    close the response so its socket doesn't stay open until garbage
+    collection reclaims it. A no-op if the call failed or was itself
+    already cancelled."""
+    try:
+        resp = future.result()
+    except Exception:
+        return
+    try:
+        resp.close()
+    except Exception:
+        pass
+
+
 class IcyMetadataThread(QThread):
     """Periodically opens a brief connection to a Shoutcast/Icecast stream
     purely to read one ICY metadata block (the 'now playing' song title),
@@ -120,9 +179,11 @@ class IcyMetadataThread(QThread):
         headers = {"Icy-MetaData": "1", "User-Agent": RADIOTOP_USER_AGENT}
         req = urllib.request.Request(self.url, headers=headers)
         try:
-            resp = urllib.request.urlopen(req, timeout=15, context=_SSL_CONTEXT)
+            resp = _cancellable_urlopen(req, timeout=15, stop_event=self._stop_event)
         except Exception:
             return ""  # transient failure - the outer loop will retry next interval
+        if resp is None:
+            return ""  # stop() fired while still connecting - outer loop exits on its own
 
         with self._resp_lock:
             self._resp = resp
@@ -217,10 +278,13 @@ class _CancellableRequestThread(QThread):
     def _urlopen(self, req, timeout=10):
         """Drop-in replacement for urllib.request.urlopen() that registers
         the response so stop() can interrupt it, and returns None instead
-        of opening the connection at all if stop() was already called."""
+        of opening the connection at all if stop() was already called (or
+        if stop() fires while still connecting - see _cancellable_urlopen)."""
         if self._stop_event.is_set():
             return None
-        resp = urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT)
+        resp = _cancellable_urlopen(req, timeout=timeout, stop_event=self._stop_event)
+        if resp is None:
+            return None
         with self._resp_lock:
             if self._stop_event.is_set():
                 resp.close()
