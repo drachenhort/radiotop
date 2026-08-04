@@ -103,6 +103,15 @@ def format_reconnect_message(attempt_number, max_attempts):
     return f"Connection dropped, reconnecting ({attempt_number}/{max_attempts})..."
 
 
+def should_notify_immediately(artist, icon_cached):
+    """Whether MainWindow._schedule_track_notification should show the
+    "now playing" notification right away, versus holding it briefly so it
+    can use the real artist photo once the async fetch finishes. True when
+    there's no artist to look up at all, or the artist's photo is already
+    cached from earlier this session."""
+    return not artist or icon_cached
+
+
 def _subwave_api_base(stream_url):
     """A SUB/WAVE station's HTTP API lives on the same origin as its stream
     URL, under /api (the bundled-Caddy production deploy puts the stream,

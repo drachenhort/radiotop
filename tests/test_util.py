@@ -1,4 +1,4 @@
-from util import select_output_device_index, should_attempt_reconnect
+from util import select_output_device_index, should_attempt_reconnect, should_notify_immediately
 
 
 def test_select_output_device_index_finds_target():
@@ -54,3 +54,16 @@ def test_format_reconnect_message_first_attempt():
 
 def test_format_reconnect_message_last_attempt():
     assert format_reconnect_message(5, 5) == "Connection dropped, reconnecting (5/5)..."
+
+
+def test_should_notify_immediately_true_when_no_artist():
+    assert should_notify_immediately(None, icon_cached=False) is True
+    assert should_notify_immediately("", icon_cached=False) is True
+
+
+def test_should_notify_immediately_true_when_icon_cached():
+    assert should_notify_immediately("Some Artist", icon_cached=True) is True
+
+
+def test_should_notify_immediately_false_when_artist_and_no_icon():
+    assert should_notify_immediately("Some Artist", icon_cached=False) is False

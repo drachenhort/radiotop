@@ -90,6 +90,7 @@ from util import (
     format_reconnect_message,
     select_output_device_index,
     should_attempt_reconnect,
+    should_notify_immediately,
 )
 
 APP_ORG = "radiotop"
@@ -778,9 +779,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
     def _schedule_track_notification(self, artist, body):
         icon = self._icon_for_artist(artist) if artist else None
-        if not artist or icon is not None:
-            # No artist to look up, or we already have their photo cached
-            # from earlier this session - show right away.
+        if should_notify_immediately(artist, icon is not None):
             self._pending_notification_artist = None
             self._show_notification("RadioTop - Now Playing", body, icon)
             return
