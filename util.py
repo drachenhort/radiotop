@@ -87,6 +87,15 @@ def select_output_device_index(device_ids, target_id):
     return 0
 
 
+def should_attempt_reconnect(auto_reconnect_enabled, has_current_station, attempts_remaining):
+    """Whether MainWindow._maybe_reconnect should schedule a reconnect
+    attempt after a playback error: only if the user has auto-reconnect on,
+    a station is actually selected, and there are attempts left in the
+    current budget (reset each time a station is picked - see
+    MainWindow.play_index)."""
+    return auto_reconnect_enabled and has_current_station and attempts_remaining > 0
+
+
 def _subwave_api_base(stream_url):
     """A SUB/WAVE station's HTTP API lives on the same origin as its stream
     URL, under /api (the bundled-Caddy production deploy puts the stream,

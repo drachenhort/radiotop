@@ -88,6 +88,7 @@ from util import (
     _resource_path,
     _subwave_api_base,
     select_output_device_index,
+    should_attempt_reconnect,
 )
 
 APP_ORG = "radiotop"
@@ -1003,9 +1004,11 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._maybe_reconnect()
 
     def _maybe_reconnect(self):
-        if not self.auto_reconnect_enabled:
-            return
-        if self.current_idx is None or self._reconnect_attempts_remaining <= 0:
+        if not should_attempt_reconnect(
+            self.auto_reconnect_enabled,
+            self.current_idx is not None,
+            self._reconnect_attempts_remaining,
+        ):
             return
         self._reconnect_attempts_remaining -= 1
         idx = self.current_idx
