@@ -87,6 +87,7 @@ from util import (
     _normalize_station_url,
     _resource_path,
     _subwave_api_base,
+    format_reconnect_message,
     select_output_device_index,
     should_attempt_reconnect,
 )
@@ -1013,10 +1014,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._reconnect_attempts_remaining -= 1
         idx = self.current_idx
         generation = self._playback_generation
+        attempt_number = self.reconnect_max_attempts - self._reconnect_attempts_remaining
         self.statusBar().showMessage(
-            f"Connection dropped, reconnecting "
-            f"({self.reconnect_max_attempts - self._reconnect_attempts_remaining}/"
-            f"{self.reconnect_max_attempts})...",
+            format_reconnect_message(attempt_number, self.reconnect_max_attempts),
             4000,
         )
         QTimer.singleShot(3000, lambda: self._do_reconnect(idx, generation))

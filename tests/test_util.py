@@ -43,3 +43,14 @@ def test_should_attempt_reconnect_false_when_no_attempts_remaining():
 
 def test_should_attempt_reconnect_false_when_attempts_negative():
     assert should_attempt_reconnect(True, True, -1) is False
+
+
+from util import format_reconnect_message
+
+
+def test_format_reconnect_message_first_attempt():
+    assert format_reconnect_message(1, 5) == "Connection dropped, reconnecting (1/5)..."
+
+
+def test_format_reconnect_message_last_attempt():
+    assert format_reconnect_message(5, 5) == "Connection dropped, reconnecting (5/5)..."

@@ -96,6 +96,13 @@ def should_attempt_reconnect(auto_reconnect_enabled, has_current_station, attemp
     return auto_reconnect_enabled and has_current_station and attempts_remaining > 0
 
 
+def format_reconnect_message(attempt_number, max_attempts):
+    """Status-bar text shown while MainWindow._maybe_reconnect is retrying
+    a dropped connection, e.g. "Connection dropped, reconnecting (2/5)...".
+    """
+    return f"Connection dropped, reconnecting ({attempt_number}/{max_attempts})..."
+
+
 def _subwave_api_base(stream_url):
     """A SUB/WAVE station's HTTP API lives on the same origin as its stream
     URL, under /api (the bundled-Caddy production deploy puts the stream,
