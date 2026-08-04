@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.40] - 2026-08-04
+
+- Internal refactor: pulled four decision-logic branches (output-device selection, reconnect
+  gating/messaging, notification timing) out of `MainWindow` into pure, directly-tested functions
+  in `util.py`. No user-visible behavior change; closes test-coverage gaps.
+
 ## [0.39] - 2026-07-30
 
 - Fixed RadioTop sometimes blocking system logout/reboot: closing the main window while the tray
