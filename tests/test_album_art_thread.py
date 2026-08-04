@@ -51,6 +51,27 @@ def test_run_falls_back_to_cover_art_archive_when_deezer_misses(monkeypatch, qap
     assert captured == [b"cover-art-bytes"]
 
 
+def test_run_falls_back_to_cover_art_archive_when_deezer_returns_empty_body(monkeypatch, qapp):
+    # Regression test: a 200 OK with an empty/truncated body (seen from CDNs
+    # under load) used to be treated as a successful fetch (b"" is not None)
+    # instead of falling through to the next source in the chain.
+    def _urlopen(req, timeout=None, **kwargs):
+        if "api.deezer.com/search/track" in req.full_url:
+            return _json_response({"data": [{"album": {"cover_xl": "https://deezer.example/cover.jpg"}}]})
+        if "deezer.example" in req.full_url:
+            return _FakeResponse(b"")  # empty body
+        assert req.full_url == "https://coverartarchive.org/release/mbid-123/front-500"
+        return _FakeResponse(b"cover-art-bytes")
+
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
+    thread = AlbumArtThread("mbid-123", "https://example.com/itunes.jpg", "Radiohead", "Creep")
+    captured = []
+    thread.image_ready.connect(lambda data: captured.append(data))
+    thread.run()
+
+    assert captured == [b"cover-art-bytes"]
+
+
 def test_run_uses_cover_art_archive_when_mbid_present(monkeypatch, qapp):
     calls = []
 

@@ -54,6 +54,30 @@ def test_run_falls_back_to_discogs_when_deezer_misses(monkeypatch, qapp):
     assert captured == [b"discogs-photo-bytes"]
 
 
+def test_run_falls_back_to_discogs_when_deezer_returns_empty_body(monkeypatch, qapp):
+    # Regression test: a 200 OK with an empty/truncated body (seen from CDNs
+    # under load) used to be treated as a successful fetch (b"" is not None)
+    # instead of falling through to the next source in the chain.
+    def _urlopen(req, timeout=None, **kwargs):
+        if "api.deezer.com/search/artist" in req.full_url:
+            return _json_response({"data": [{"picture_xl": "https://deezer.example/artist.jpg"}]})
+        if "deezer.example" in req.full_url:
+            return _FakeResponse(b"")  # empty body
+        if "discogs.com/database/search" in req.full_url:
+            return _json_response({"results": [{"id": 1, "cover_image": "https://discogs.example/cover.jpg"}]})
+        if "discogs.com/artists" in req.full_url:
+            return _json_response({"images": []})
+        return _FakeResponse(b"discogs-photo-bytes")
+
+    monkeypatch.setattr("threads.urllib.request.urlopen", _urlopen)
+    thread = ArtistImageThread("Radiohead", discogs_token="dtoken")
+    captured = []
+    thread.image_ready.connect(lambda data: captured.append(data))
+    thread.run()
+
+    assert captured == [b"discogs-photo-bytes"]
+
+
 def test_run_falls_back_to_wikipedia_when_deezer_and_discogs_miss(monkeypatch, qapp):
     def _urlopen(req, timeout=None, **kwargs):
         if "api.deezer.com" in req.full_url:

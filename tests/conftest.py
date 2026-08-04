@@ -112,6 +112,9 @@ class MainWindowStub(QObject):
     def _update_status(self):
         rt.MainWindow._update_status(self)
 
+    def _refresh_current_artist_image(self):
+        rt.MainWindow._refresh_current_artist_image(self)
+
     def _save_custom_stations(self):
         self.save_custom_stations_calls += 1
         if self.settings is not None:

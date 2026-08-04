@@ -203,3 +203,79 @@ def test_maybe_reconnect_does_nothing_when_disabled(main_window_stub, monkeypatc
     )
     rt.MainWindow._maybe_reconnect(stub)
     assert stub._reconnect_attempts_remaining == 3
+
+
+# ------------------------------------------------------- credential refresh
+class _FakeAcceptedDialog:
+    """Stands in for LastfmSettingsDialog/DiscogsSettingsDialog: a real
+    QDialog can't be parented to MainWindowStub (a QObject, not a QWidget),
+    and _configure_lastfm_key/_configure_discogs_token only touch .exec()
+    and the value-accessor method anyway."""
+
+    def __init__(self, current_value, parent=None):
+        pass
+
+    def exec(self):
+        return rt.QDialog.DialogCode.Accepted
+
+
+def _rig_for_credential_config(stub, current_artist):
+    stub.settings = SimpleNamespace(setValue=lambda k, v: None)
+    stub.lastfm_api_key = ""
+    stub.discogs_token = ""
+    stub.lookup_cache = {"some-title": {}}
+    stub.artist_image_cache = {"Some Artist": b"stale-bytes"}
+    stub.last_image_artist = current_artist
+    stub._status_bar = SimpleNamespace(showMessage=lambda *a, **k: None)
+    stub.statusBar = lambda: stub._status_bar
+    stub._fetch_artist_image_calls = []
+    stub._fetch_artist_image = lambda artist: stub._fetch_artist_image_calls.append(artist)
+
+
+def test_configure_lastfm_key_refetches_currently_displayed_artist_image(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    _rig_for_credential_config(stub, current_artist="Some Artist")
+
+    class _FakeDialog(_FakeAcceptedDialog):
+        def api_key(self):
+            return "new-key"
+
+    monkeypatch.setattr(rt, "LastfmSettingsDialog", _FakeDialog)
+
+    rt.MainWindow._configure_lastfm_key(stub)
+
+    assert stub.artist_image_cache == {}
+    assert stub.last_image_artist is None
+    assert stub._fetch_artist_image_calls == ["Some Artist"]
+
+
+def test_configure_discogs_token_refetches_currently_displayed_artist_image(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    _rig_for_credential_config(stub, current_artist="Some Artist")
+
+    class _FakeDialog(_FakeAcceptedDialog):
+        def token(self):
+            return "new-token"
+
+    monkeypatch.setattr(rt, "DiscogsSettingsDialog", _FakeDialog)
+
+    rt.MainWindow._configure_discogs_token(stub)
+
+    assert stub.artist_image_cache == {}
+    assert stub.last_image_artist is None
+    assert stub._fetch_artist_image_calls == ["Some Artist"]
+
+
+def test_configure_lastfm_key_does_nothing_when_no_track_playing(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    _rig_for_credential_config(stub, current_artist=None)
+
+    class _FakeDialog(_FakeAcceptedDialog):
+        def api_key(self):
+            return "new-key"
+
+    monkeypatch.setattr(rt, "LastfmSettingsDialog", _FakeDialog)
+
+    rt.MainWindow._configure_lastfm_key(stub)
+
+    assert stub._fetch_artist_image_calls == []

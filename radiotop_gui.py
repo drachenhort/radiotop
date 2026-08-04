@@ -138,6 +138,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.meta_thread = None
         self.lookup_thread = None
         self.lookup_cache = {}
+        self.last_lookup_title = None
         self.artist_image_thread = None
         self.artist_image_cache = {}
         self.last_image_artist = None
@@ -523,6 +524,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._pending_notification_artist = None
         self._show_notification("RadioTop - Station", station["name"])
         self.track_info_dialog.set_waiting()
+        self.last_lookup_title = None
+        self._stop_lookup_thread()
         self.last_image_artist = None
         self._stop_artist_image_thread()
         self._set_artist_image_placeholder("Waiting for track info...")
@@ -812,6 +815,18 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             return QIcon(pixmap)
         return None
 
+    def _refresh_current_artist_image(self):
+        # Clearing artist_image_cache alone isn't enough to make a
+        # credential change take effect immediately: _fetch_artist_image()
+        # no-ops when asked to re-fetch for the artist it's already
+        # showing/fetching, so without resetting last_image_artist too, the
+        # change stays invisible until the next track change (same fix
+        # applied in _on_similar_tracks_widen_toggled).
+        artist_name = self.last_image_artist
+        self.last_image_artist = None
+        if artist_name:
+            self._fetch_artist_image(artist_name)
+
     def _configure_lastfm_key(self):
         dlg = LastfmSettingsDialog(self.lastfm_api_key, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -820,6 +835,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self.settings.setValue("lastfm_api_key", key)
             self.lookup_cache.clear()
             self.artist_image_cache.clear()
+            self._refresh_current_artist_image()
             self.statusBar().showMessage(
                 "Last.fm API key saved." if key else "Last.fm API key cleared - using MusicBrainz only.",
                 4000,
@@ -832,6 +848,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self.discogs_token = token
             self.settings.setValue("discogs_token", token)
             self.artist_image_cache.clear()
+            self._refresh_current_artist_image()
             self.statusBar().showMessage(
                 "Discogs token saved." if token else "Discogs token cleared.",
                 4000,
@@ -939,6 +956,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
         self._stop_lookup_thread()
+        self.last_lookup_title = None
         self._stop_artist_image_thread()
         self._pending_notification_artist = None
         self.last_image_artist = None

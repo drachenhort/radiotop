@@ -506,6 +506,7 @@ class StationListDialog(QDialog):
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid http:// or https:// stream URL.")
             return
         url, was_adjusted = _normalize_station_url(url)
+        old_guess = self.main._guess_name(station["url"])
         if not name:
             name = self.main._guess_name(url)
         elif name == prefill_name and station["name"] != original_name:
@@ -514,6 +515,15 @@ class StationListDialog(QDialog):
             # open - don't clobber it with the stale pre-filled value the
             # user left untouched.
             name = station["name"]
+        elif name == prefill_name and station["name"] == old_guess and url != station["url"]:
+            # The name was still just the placeholder auto-guessed from the
+            # old URL's hostname (never actually typed in by the user) and
+            # the URL just changed - re-guess from the new URL instead of
+            # keeping the stale guess, so _on_icy_station_name still
+            # recognizes this as an adoptable placeholder and can offer the
+            # stream's real name later, exactly as it would for a station
+            # that was never edited.
+            name = self.main._guess_name(url)
 
         station["name"] = name
         url_changed = url != station["url"]

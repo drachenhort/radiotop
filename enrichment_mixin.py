@@ -30,6 +30,12 @@ class EnrichmentMixin:
             cache.pop(next(iter(cache)))
 
     def _lookup_track_info(self, title):
+        # Set before either branch below runs, so a result for a since-
+        # superseded title (from a station switch, or a newer track on the
+        # same station arriving while an old lookup is still in flight) is
+        # recognized as stale in _on_lookup_result instead of silently
+        # overwriting the currently-displayed track info.
+        self.last_lookup_title = title
         if title in self.lookup_cache:
             # Route through _on_lookup_result rather than duplicating its
             # logic here, so a cache hit still re-triggers the artist
@@ -50,6 +56,8 @@ class EnrichmentMixin:
 
     def _on_lookup_result(self, result):
         self._cache_set(self.lookup_cache, result["raw_title"], result)
+        if result["raw_title"] != self.last_lookup_title:
+            return  # superseded by a newer track since this lookup started
         self.track_info_dialog.apply_lookup(result)
         if result.get("found") and result.get("year"):
             self._set_track_label(result["raw_title"], result["year"])

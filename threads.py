@@ -647,17 +647,21 @@ class ArtistImageThread(_CancellableRequestThread):
         self.discogs_token = discogs_token
 
     def run(self):
+        # `not image_bytes` (rather than `is None`) so a 200 OK with an
+        # empty/truncated body - seen in the wild from CDNs under load -
+        # falls through to the next source instead of being treated as a
+        # successful fetch.
         image_bytes = self._fetch_from_deezer()
-        if image_bytes is None and self.discogs_token and not self._stop_event.is_set():
+        if not image_bytes and self.discogs_token and not self._stop_event.is_set():
             image_bytes = self._fetch_from_discogs()
-        if image_bytes is None and not self._stop_event.is_set():
+        if not image_bytes and not self._stop_event.is_set():
             image_bytes = self._fetch_from_wikipedia()
-        if image_bytes is None and self.lastfm_api_key and not self._stop_event.is_set():
+        if not image_bytes and self.lastfm_api_key and not self._stop_event.is_set():
             image_bytes = self._fetch_from_lastfm()
 
         if self._stop_event.is_set():
             return
-        if image_bytes is None:
+        if not image_bytes:
             self.not_found.emit()
             return
         self.image_ready.emit(image_bytes)
@@ -872,17 +876,21 @@ class AlbumArtThread(_CancellableRequestThread):
             return None
 
     def run(self):
+        # `not image_bytes` (rather than `is None`) so a 200 OK with an
+        # empty/truncated body - seen in the wild from CDNs under load -
+        # falls through to the next source instead of being treated as a
+        # successful fetch.
         image_bytes = None
         if self.artist_name and self.track_title:
             image_bytes = self._fetch_from_deezer()
-        if image_bytes is None and self.release_mbid and not self._stop_event.is_set():
+        if not image_bytes and self.release_mbid and not self._stop_event.is_set():
             image_bytes = self._fetch_from_cover_art_archive()
-        if image_bytes is None and self.itunes_artwork_url and not self._stop_event.is_set():
+        if not image_bytes and self.itunes_artwork_url and not self._stop_event.is_set():
             image_bytes = self._fetch_from_itunes()
 
         if self._stop_event.is_set():
             return
-        if image_bytes is None:
+        if not image_bytes:
             self.not_found.emit()
             return
         self.image_ready.emit(image_bytes)

@@ -193,6 +193,31 @@ def test_edit_station_keeps_icy_adopted_name_over_stale_prefill(qapp, monkeypatc
     assert main.stations[0]["name"] == "Icy Adopted Name"
 
 
+def test_edit_station_reguesses_name_when_untouched_placeholder_and_url_changes(qapp, monkeypatch):
+    # Regression test: a station's name field doesn't record whether it was
+    # auto-guessed or user-typed - _on_icy_station_name re-derives that by
+    # comparing the stored name against _guess_name(current url). If the URL
+    # changes here without the name field being touched, the stale guess for
+    # the OLD host stops matching _guess_name(new url), permanently blocking
+    # future icy-name adoption for this station even though the name was
+    # never actually customized by the user.
+    station = _station("old.example.com", "http://old.example.com:7700/stream.mp3")
+
+    def fake_exec(self):
+        self.url_edit.setText("http://new.example.com:7700/stream.mp3")
+        return QDialog.DialogCode.Accepted  # name_edit left as-is: "old.example.com"
+
+    monkeypatch.setattr(EditStationDialog, "exec", fake_exec)
+
+    main = _StubMainWindow([station])
+    dlg = StationListDialog(main)
+    dlg.list_widget.setCurrentRow(0)
+    dlg._edit_station()
+
+    assert main.stations[0]["name"] == "new.example.com"
+    assert main.stations[0]["url"] == "http://new.example.com:7700/stream.mp3"
+
+
 def test_edit_station_prefills_with_live_icy_name_for_playing_station(qapp, monkeypatch):
     # A station with a user-typed name never gets that name auto-adopted
     # from the stream (see test_icy_station_name.py), but the Edit dialog
