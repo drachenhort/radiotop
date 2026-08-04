@@ -2,6 +2,24 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.41] - 2026-08-04
+
+- Fixed: removing a custom station could leave the wrong station selected (and enabled for
+  removal) right after the delete, risking a second click deleting the wrong one.
+- Fixed: removing an earlier custom station while an auto-reconnect retry was pending could,
+  once the retry fired, start playing whatever station had shifted into that slot instead of
+  silently no-opping.
+- Fixed: a slow-arriving track lookup for a track you'd already skipped past (via a station
+  switch, or a new track on the same station) could overwrite the currently displayed
+  title/genre/album/year with stale info.
+- Fixed: a 200 OK with an empty image response was treated as a successful artist photo/album
+  art fetch instead of falling through to the next source, occasionally leaving a blank image
+  where a working fallback source was available.
+- Fixed: changing the Last.fm key or Discogs token in Settings didn't refresh the artist image
+  already on screen - it now updates immediately instead of waiting for the next track change.
+- Fixed: editing a station's stream URL without touching its (auto-guessed) name could
+  permanently stop RadioTop from adopting that station's real broadcast name later.
+
 ## [0.40] - 2026-08-04
 
 - Internal refactor: pulled four decision-logic branches (output-device selection, reconnect
