@@ -2,6 +2,13 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.42] - 2026-08-04
+
+- Fixed: switching stations, closing the track-info dialog, or quitting while a background
+  metadata/artist-image/album-art/similar-tracks lookup was stuck connecting to a slow or
+  unresponsive server could stall for up to the full request timeout (10-15s) instead of
+  cancelling right away.
+
 ## [0.41] - 2026-08-04
 
 - Fixed: removing a custom station could leave the wrong station selected (and enabled for
