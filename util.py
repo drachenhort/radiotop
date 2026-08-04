@@ -73,6 +73,45 @@ def _normalize_station_url(url):
     return new_url, True
 
 
+def select_output_device_index(device_ids, target_id):
+    """Pick which audio output device index to select when (re)building the
+    device combo box. target_id is either the currently-selected device's id
+    (when preserving selection across a refresh) or the last device id saved
+    to QSettings - MainWindow._refresh_output_devices resolves which one to
+    pass in before calling this. Falls back to the first device in the list
+    if target_id is None or isn't found."""
+    if target_id:
+        for i, device_id in enumerate(device_ids):
+            if device_id == target_id:
+                return i
+    return 0
+
+
+def should_attempt_reconnect(auto_reconnect_enabled, has_current_station, attempts_remaining):
+    """Whether MainWindow._maybe_reconnect should schedule a reconnect
+    attempt after a playback error: only if the user has auto-reconnect on,
+    a station is actually selected, and there are attempts left in the
+    current budget (reset each time a station is picked - see
+    MainWindow.play_index)."""
+    return auto_reconnect_enabled and has_current_station and attempts_remaining > 0
+
+
+def format_reconnect_message(attempt_number, max_attempts):
+    """Status-bar text shown while MainWindow._maybe_reconnect is retrying
+    a dropped connection, e.g. "Connection dropped, reconnecting (2/5)...".
+    """
+    return f"Connection dropped, reconnecting ({attempt_number}/{max_attempts})..."
+
+
+def should_notify_immediately(artist, icon_cached):
+    """Whether MainWindow._schedule_track_notification should show the
+    "now playing" notification right away, versus holding it briefly so it
+    can use the real artist photo once the async fetch finishes. True when
+    there's no artist to look up at all, or the artist's photo is already
+    cached from earlier this session."""
+    return not artist or icon_cached
+
+
 def _subwave_api_base(stream_url):
     """A SUB/WAVE station's HTTP API lives on the same origin as its stream
     URL, under /api (the bundled-Caddy production deploy puts the stream,

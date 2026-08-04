@@ -71,6 +71,10 @@ class MainWindowStub(QObject):
         self.current_idx = None
         self._current_icy_name = None
         self._subwave_detected = False
+        self.auto_reconnect_enabled = True
+        self.reconnect_max_attempts = 3
+        self._reconnect_attempts_remaining = 0
+        self._playback_generation = 0
         self.stations_menu = QMenu()
         self.play_index_calls = []
         self.show_station_list_dialog_calls = 0

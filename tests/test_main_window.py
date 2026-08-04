@@ -170,3 +170,36 @@ def test_update_status_prefers_live_icy_name_over_stored_name(main_window_stub):
     _rig_for_update_status(main_window_stub, QMediaPlayer.PlaybackState.PlayingState)
     rt.MainWindow._update_status(main_window_stub)
     assert main_window_stub.status_label.text_value == "Playing on - Actual Broadcast Name"
+
+
+# ------------------------------------------------------------ maybe reconnect
+def test_maybe_reconnect_schedules_when_conditions_met(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.auto_reconnect_enabled = True
+    stub.current_idx = 0
+    stub._reconnect_attempts_remaining = 3
+    stub.reconnect_max_attempts = 3
+    stub._playback_generation = 1
+    scheduled = []
+    monkeypatch.setattr(
+        rt.QTimer,
+        "singleShot",
+        lambda delay, fn: scheduled.append((delay, fn)),
+    )
+    rt.MainWindow._maybe_reconnect(stub)
+    assert stub._reconnect_attempts_remaining == 2
+    assert len(scheduled) == 1
+
+
+def test_maybe_reconnect_does_nothing_when_disabled(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.auto_reconnect_enabled = False
+    stub.current_idx = 0
+    stub._reconnect_attempts_remaining = 3
+    monkeypatch.setattr(
+        rt.QTimer,
+        "singleShot",
+        lambda delay, fn: (_ for _ in ()).throw(AssertionError("should not schedule")),
+    )
+    rt.MainWindow._maybe_reconnect(stub)
+    assert stub._reconnect_attempts_remaining == 3

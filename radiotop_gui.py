@@ -87,6 +87,10 @@ from util import (
     _normalize_station_url,
     _resource_path,
     _subwave_api_base,
+    format_reconnect_message,
+    select_output_device_index,
+    should_attempt_reconnect,
+    should_notify_immediately,
 )
 
 APP_ORG = "radiotop"
@@ -775,9 +779,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
     def _schedule_track_notification(self, artist, body):
         icon = self._icon_for_artist(artist) if artist else None
-        if not artist or icon is not None:
-            # No artist to look up, or we already have their photo cached
-            # from earlier this session - show right away.
+        if should_notify_immediately(artist, icon is not None):
             self._pending_notification_artist = None
             self._show_notification("RadioTop - Now Playing", body, icon)
             return
@@ -1002,17 +1004,18 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._maybe_reconnect()
 
     def _maybe_reconnect(self):
-        if not self.auto_reconnect_enabled:
-            return
-        if self.current_idx is None or self._reconnect_attempts_remaining <= 0:
+        if not should_attempt_reconnect(
+            self.auto_reconnect_enabled,
+            self.current_idx is not None,
+            self._reconnect_attempts_remaining,
+        ):
             return
         self._reconnect_attempts_remaining -= 1
         idx = self.current_idx
         generation = self._playback_generation
+        attempt_number = self.reconnect_max_attempts - self._reconnect_attempts_remaining
         self.statusBar().showMessage(
-            f"Connection dropped, reconnecting "
-            f"({self.reconnect_max_attempts - self._reconnect_attempts_remaining}/"
-            f"{self.reconnect_max_attempts})...",
+            format_reconnect_message(attempt_number, self.reconnect_max_attempts),
             4000,
         )
         QTimer.singleShot(3000, lambda: self._do_reconnect(idx, generation))
@@ -1053,14 +1056,15 @@ class MainWindow(EnrichmentMixin, QMainWindow):
                 saved_id = saved_id.encode("latin-1", errors="ignore")
             current_id = bytes(saved_id) if saved_id else None
 
-        select_idx = 0
-        for i, dev in enumerate(devices):
+        device_ids = []
+        for dev in devices:
             label = dev.description()
             if not default_device.isNull() and bytes(dev.id()) == bytes(default_device.id()):
                 label += " (Default)"
             self.device_combo.addItem(label, dev)
-            if current_id and bytes(dev.id()) == current_id:
-                select_idx = i
+            device_ids.append(bytes(dev.id()))
+
+        select_idx = select_output_device_index(device_ids, current_id)
 
         self.device_combo.setCurrentIndex(select_idx)
         self._apply_output_device(self.device_combo.itemData(select_idx))
