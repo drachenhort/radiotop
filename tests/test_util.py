@@ -1,4 +1,9 @@
-from util import select_output_device_index, should_attempt_reconnect, should_notify_immediately
+from util import (
+    format_reconnect_message,
+    select_output_device_index,
+    should_attempt_reconnect,
+    should_notify_immediately,
+)
 
 
 def test_select_output_device_index_finds_target():
@@ -43,9 +48,6 @@ def test_should_attempt_reconnect_false_when_no_attempts_remaining():
 
 def test_should_attempt_reconnect_false_when_attempts_negative():
     assert should_attempt_reconnect(True, True, -1) is False
-
-
-from util import format_reconnect_message
 
 
 def test_format_reconnect_message_first_attempt():
