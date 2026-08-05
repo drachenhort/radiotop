@@ -2,6 +2,18 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.44] - 2026-08-05
+
+- Fixed: a stalled station stream could leave the app unresponsive enough to need a force-close.
+  A background lookup thread (ICY metadata, SUB/WAVE, track/artist/album/similar-tracks) whose
+  connection attempt genuinely timed out could get stuck spinning at full CPU forever instead of
+  returning, because the cancellation logic added in 0.42 mistook that real timeout for its own
+  polling interval elapsing (they're the same exception class as of Python 3.11+) and silently
+  discarded it.
+- Fixed: the local stream proxy had no way to cancel a stuck upstream connection, so Stop or
+  switching stations while a stream was stalled didn't take effect until the proxy's own
+  connect/read timeout (up to 15s) elapsed on its own.
+
 ## [0.43] - 2026-08-04
 
 - Fixed: on SUB/WAVE stations, the displayed track title could occasionally get stuck on an old
