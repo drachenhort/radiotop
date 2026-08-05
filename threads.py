@@ -363,17 +363,25 @@ class SubwaveNowPlayingThread(_CancellableRequestThread):
 
     def run(self):
         failures = 0
+        ever_succeeded = False
         while not self._stop_event.is_set():
             now, state = self._poll_once()
             if self._stop_event.is_set():
                 return
             if now is None and state is None:
                 failures += 1
-                if failures >= self.MAX_CONSECUTIVE_FAILURES:
+                # Only give up entirely while still probing whether this is
+                # even a SUB/WAVE station at all. Once a poll has actually
+                # succeeded, a run of failures is more likely a transient
+                # network blip than proof the API stopped existing, so keep
+                # polling instead of permanently killing the current show /
+                # song info and the Like button for the rest of the session.
+                if not ever_succeeded and failures >= self.MAX_CONSECUTIVE_FAILURES:
                     self.unavailable.emit()
                     return
             else:
                 failures = 0
+                ever_succeeded = True
                 self.now_playing_ready.emit({"now_playing": now or {}, "state": state or {}})
             self._stop_event.wait(self.POLL_INTERVAL)
 
