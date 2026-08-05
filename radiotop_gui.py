@@ -164,6 +164,10 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._current_subwave_track = None
         self._subwave_detected = False
         self._subwave_request_threads = []
+        self._subwave_heartbeat_timer = QTimer(self)
+        self._subwave_heartbeat_timer.setSingleShot(True)
+        self._subwave_heartbeat_timer.timeout.connect(self._on_subwave_heartbeat_timeout)
+        self._subwave_heartbeat_missed = 0
         self.liked_tracks = self._load_liked_tracks()
         self.update_check_thread = None
         self._reconnect_attempts_remaining = 0
@@ -564,6 +568,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
         self.subwave_api_base = _subwave_api_base(url)
         self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base)
         self.subwave_thread.now_playing_ready.connect(self._on_subwave_now_playing)
@@ -576,6 +582,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         thread = self.subwave_thread
         self.subwave_thread = None
         self.subwave_api_base = None
+        self._subwave_heartbeat_timer.stop()
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
         if thread is None:
             return
         try:
@@ -612,6 +621,12 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
+        self._subwave_heartbeat_timer.stop()
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
+
+    def _on_subwave_heartbeat_timeout(self):
+        pass
 
     def _set_subwave_heartbeat_dot(self, state):
         if state == "hidden":
@@ -625,6 +640,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         if self.current_idx is None:
             return
         self._subwave_detected = True
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("fresh")
+        self._subwave_heartbeat_timer.start(15000)
         self._update_status()
 
         now_response = payload.get("now_playing") or {}

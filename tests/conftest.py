@@ -46,6 +46,24 @@ class _LabelStub:
         return self.text_value
 
 
+class _TimerStub:
+    def __init__(self):
+        self.start_calls = []
+        self.stop_calls = 0
+        self.active = False
+
+    def start(self, ms):
+        self.start_calls.append(ms)
+        self.active = True
+
+    def stop(self):
+        self.stop_calls += 1
+        self.active = False
+
+    def isActive(self):
+        return self.active
+
+
 @pytest.fixture
 def isolated_settings(tmp_path):
     """A QSettings instance backed by a throwaway INI file, so tests never
@@ -75,6 +93,8 @@ class MainWindowStub(QObject):
         self.current_idx = None
         self._current_icy_name = None
         self._subwave_detected = False
+        self._subwave_heartbeat_timer = None
+        self._subwave_heartbeat_missed = 0
         self.auto_reconnect_enabled = True
         self.reconnect_max_attempts = 3
         self._reconnect_attempts_remaining = 0
@@ -118,6 +138,21 @@ class MainWindowStub(QObject):
 
     def _refresh_current_artist_image(self):
         rt.MainWindow._refresh_current_artist_image(self)
+
+    def _set_subwave_heartbeat_dot(self, state):
+        rt.MainWindow._set_subwave_heartbeat_dot(self, state)
+
+    def _stop_subwave_thread(self):
+        rt.MainWindow._stop_subwave_thread(self)
+
+    def _on_subwave_now_playing(self, payload):
+        rt.MainWindow._on_subwave_now_playing(self, payload)
+
+    def _on_subwave_unavailable(self):
+        rt.MainWindow._on_subwave_unavailable(self)
+
+    def _on_subwave_thread_finished(self):
+        rt.MainWindow._on_subwave_thread_finished(self)
 
     def _save_custom_stations(self):
         self.save_custom_stations_calls += 1

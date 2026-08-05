@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from PySide6.QtMultimedia import QMediaPlayer
 
 import radiotop_gui as rt
-from conftest import _LabelStub
+from conftest import _LabelStub, _TimerStub
 
 
 # --------------------------------------------------------------- guess name
@@ -298,6 +298,8 @@ def _rig_for_subwave_now_playing(stub):
         set_subwave_details=lambda bpm, key: None,
         set_now_playing=lambda title: None,
     )
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
     stub._liked_key = lambda artist, title: rt.MainWindow._liked_key(artist, title)
     stub._on_track_title = lambda title: rt.MainWindow._on_track_title(stub, title)
     # Let the real _on_track_title run (that's the method under test here -
@@ -405,3 +407,77 @@ def test_set_subwave_heartbeat_dot_stale(main_window_stub):
     rt.MainWindow._set_subwave_heartbeat_dot(stub, "stale")
 
     assert stub.subwave_heartbeat_dot.text() == "●"
+
+
+# ----------------------------------------------- subwave heartbeat timer
+def test_start_subwave_thread_resets_heartbeat_state(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 2
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._current_subwave_track = None
+    stub.subwave_detail_label = _LabelStub()
+    stub.next_track_label = _LabelStub()
+    stub.show_label = _LabelStub()
+    stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
+    monkeypatch.setattr(rt, "SubwaveNowPlayingThread", lambda api_base: SimpleNamespace(
+        now_playing_ready=SimpleNamespace(connect=lambda f: None),
+        unavailable=SimpleNamespace(connect=lambda f: None),
+        finished=SimpleNamespace(connect=lambda f: None),
+        start=lambda: None,
+        deleteLater=lambda: None,
+    ))
+
+    rt.MainWindow._start_subwave_thread(stub, "http://example.com:8000/stream.mp3")
+
+    assert stub._subwave_heartbeat_missed == 0
+    assert stub._subwave_heartbeat_timer.stop_calls == 1
+    assert stub.subwave_heartbeat_dot.text() == ""
+
+
+def test_on_subwave_now_playing_starts_and_resets_heartbeat_timer(main_window_stub):
+    stub = main_window_stub
+    _rig_for_subwave_now_playing(stub)
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 1
+
+    rt.MainWindow._on_subwave_now_playing(stub, _payload("Some Artist", "Some Track"))
+
+    assert stub._subwave_heartbeat_missed == 0
+    assert stub._subwave_heartbeat_timer.start_calls == [15000]
+    assert stub.subwave_heartbeat_dot.text() == "●"
+
+
+def test_stop_subwave_thread_stops_heartbeat_timer(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 1
+    stub.subwave_heartbeat_dot = _LabelStub()
+
+    rt.MainWindow._stop_subwave_thread(stub)
+
+    assert stub._subwave_heartbeat_timer.stop_calls == 1
+    assert stub._subwave_heartbeat_missed == 0
+    assert stub.subwave_heartbeat_dot.text() == ""
+
+
+def test_on_subwave_unavailable_stops_heartbeat_timer(main_window_stub):
+    stub = main_window_stub
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 1
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub.subwave_detail_label = _LabelStub()
+    stub.next_track_label = _LabelStub()
+    stub.show_label = _LabelStub()
+    stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
+
+    rt.MainWindow._on_subwave_unavailable(stub)
+
+    assert stub._subwave_heartbeat_timer.stop_calls == 1
+    assert stub._subwave_heartbeat_missed == 0
+    assert stub.subwave_heartbeat_dot.text() == ""
