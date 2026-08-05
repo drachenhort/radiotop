@@ -398,6 +398,7 @@ def test_set_subwave_heartbeat_dot_fresh(main_window_stub):
     rt.MainWindow._set_subwave_heartbeat_dot(stub, "fresh")
 
     assert stub.subwave_heartbeat_dot.text() == "●"
+    assert rt.MainWindow._SUBWAVE_DOT_FRESH_COLOR in stub.subwave_heartbeat_dot.style_value
 
 
 def test_set_subwave_heartbeat_dot_stale(main_window_stub):
@@ -407,6 +408,7 @@ def test_set_subwave_heartbeat_dot_stale(main_window_stub):
     rt.MainWindow._set_subwave_heartbeat_dot(stub, "stale")
 
     assert stub.subwave_heartbeat_dot.text() == "●"
+    assert rt.MainWindow._SUBWAVE_DOT_STALE_COLOR in stub.subwave_heartbeat_dot.style_value
 
 
 # ----------------------------------------------- subwave heartbeat timer
@@ -422,7 +424,7 @@ def test_start_subwave_thread_resets_heartbeat_state(main_window_stub, monkeypat
     stub.next_track_label = _LabelStub()
     stub.show_label = _LabelStub()
     stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
-    monkeypatch.setattr(rt, "SubwaveNowPlayingThread", lambda api_base: SimpleNamespace(
+    monkeypatch.setattr(rt, "SubwaveNowPlayingThread", lambda api_base, assume_available=False: SimpleNamespace(
         now_playing_ready=SimpleNamespace(connect=lambda f: None),
         unavailable=SimpleNamespace(connect=lambda f: None),
         finished=SimpleNamespace(connect=lambda f: None),
@@ -510,11 +512,13 @@ def test_heartbeat_timeout_second_miss_restarts_thread(main_window_stub):
     stub.current_idx = 0
     stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
     stub._start_subwave_thread_calls = []
-    stub._start_subwave_thread = lambda url: stub._start_subwave_thread_calls.append(url)
+    stub._start_subwave_thread = lambda url, assume_available=False: stub._start_subwave_thread_calls.append(
+        (url, assume_available)
+    )
 
     rt.MainWindow._on_subwave_heartbeat_timeout(stub)
 
-    assert stub._start_subwave_thread_calls == ["http://example.com:8000/stream.mp3"]
+    assert stub._start_subwave_thread_calls == [("http://example.com:8000/stream.mp3", True)]
 
 
 def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_window_stub):
@@ -525,7 +529,9 @@ def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_wi
     stub.current_idx = None
     stub.stations = []
     stub._start_subwave_thread_calls = []
-    stub._start_subwave_thread = lambda url: stub._start_subwave_thread_calls.append(url)
+    stub._start_subwave_thread = lambda url, assume_available=False: stub._start_subwave_thread_calls.append(
+        (url, assume_available)
+    )
 
     rt.MainWindow._on_subwave_heartbeat_timeout(stub)
 

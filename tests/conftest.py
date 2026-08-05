@@ -35,12 +35,13 @@ class _StationDialogStub:
 class _LabelStub:
     def __init__(self):
         self.text_value = ""
+        self.style_value = ""
 
     def setText(self, text):
         self.text_value = text
 
     def setStyleSheet(self, style):
-        pass
+        self.style_value = style
 
     def text(self):
         return self.text_value

@@ -560,7 +560,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._start_metadata_thread(station["url"])
         self._start_subwave_thread(station["url"])
 
-    def _start_subwave_thread(self, url):
+    def _start_subwave_thread(self, url, assume_available=False):
         self._stop_subwave_thread()
         self._current_subwave_track = None
         self._subwave_detected = False
@@ -572,7 +572,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._subwave_heartbeat_missed = 0
         self._set_subwave_heartbeat_dot("hidden")
         self.subwave_api_base = _subwave_api_base(url)
-        self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base)
+        self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base, assume_available=assume_available)
         self.subwave_thread.now_playing_ready.connect(self._on_subwave_now_playing)
         self.subwave_thread.unavailable.connect(self._on_subwave_unavailable)
         self.subwave_thread.finished.connect(self._on_subwave_thread_finished)
@@ -635,7 +635,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             return
         logging.debug("SUB/WAVE heartbeat missed twice, restarting thread")
         if self.current_idx is not None:
-            self._start_subwave_thread(self.stations[self.current_idx]["url"])
+            self._start_subwave_thread(self.stations[self.current_idx]["url"], assume_available=True)
 
     def _set_subwave_heartbeat_dot(self, state):
         if state == "hidden":
@@ -1314,6 +1314,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
 
 def main():
+    logging.basicConfig(level=os.environ.get("RADIOTOP_LOG", "WARNING"))
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_ORG)

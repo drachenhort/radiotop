@@ -357,13 +357,14 @@ class SubwaveNowPlayingThread(_CancellableRequestThread):
     POLL_INTERVAL = 5  # seconds, matching the SUB/WAVE web player's own poll rate
     MAX_CONSECUTIVE_FAILURES = 2
 
-    def __init__(self, api_base):
+    def __init__(self, api_base, assume_available=False):
         super().__init__()
         self.api_base = api_base
+        self._assume_available = assume_available
 
     def run(self):
         failures = 0
-        ever_succeeded = False
+        ever_succeeded = self._assume_available
         while not self._stop_event.is_set():
             now, state = self._poll_once()
             if self._stop_event.is_set():
