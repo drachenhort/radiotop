@@ -515,6 +515,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self._reconnect_attempts_remaining = self.reconnect_max_attempts
         self._current_icy_name = None
         if self.stream_proxy is not None:
+            self.stream_proxy.abort_active()
             play_url = self.stream_proxy.local_url(station["url"])
         else:
             play_url = station["url"]
@@ -961,6 +962,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
     def stop_playback(self):
         self.player.stop()
+        if self.stream_proxy is not None:
+            self.stream_proxy.abort_active()
         self.current_idx = None
         self._playback_generation += 1  # invalidate any pending auto-reconnect retry
         self._stop_metadata_thread()
@@ -1224,6 +1227,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._stop_similar_tracks_thread()
         self.player.stop()
         if self.stream_proxy is not None:
+            self.stream_proxy.abort_active()
             self.stream_proxy.shutdown()
         # Safety net: if anything still prevents a clean shutdown, force
         # the process to actually exit after a short grace period rather
