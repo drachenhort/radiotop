@@ -34,6 +34,7 @@ Notes:
 """
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -120,6 +121,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
     # without a bound each cache would grow for as long as the app stays open.
     MAX_CACHE_ENTRIES = 300
 
+    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
+    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("RadioTop")
@@ -161,6 +165,10 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._current_subwave_track = None
         self._subwave_detected = False
         self._subwave_request_threads = []
+        self._subwave_heartbeat_timer = QTimer(self)
+        self._subwave_heartbeat_timer.setSingleShot(True)
+        self._subwave_heartbeat_timer.timeout.connect(self._on_subwave_heartbeat_timeout)
+        self._subwave_heartbeat_missed = 0
         self.liked_tracks = self._load_liked_tracks()
         self.update_check_thread = None
         self._reconnect_attempts_remaining = 0
@@ -230,11 +238,17 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.track_label.setStyleSheet("color: #3daee9;")
         root.addWidget(self.track_label)
 
+        subwave_row = QHBoxLayout()
+        subwave_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subwave_heartbeat_dot = QLabel("")
+        self.subwave_heartbeat_dot.setStyleSheet("font-size: 10px;")
+        subwave_row.addWidget(self.subwave_heartbeat_dot)
         self.subwave_detail_label = QLabel("")
         self.subwave_detail_label.setWordWrap(True)
         self.subwave_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.subwave_detail_label.setStyleSheet("color: #888888; font-size: 10px;")
-        root.addWidget(self.subwave_detail_label)
+        subwave_row.addWidget(self.subwave_detail_label)
+        root.addLayout(subwave_row)
 
         self.next_track_label = QLabel("")
         self.next_track_label.setWordWrap(True)
@@ -546,7 +560,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._start_metadata_thread(station["url"])
         self._start_subwave_thread(station["url"])
 
-    def _start_subwave_thread(self, url):
+    def _start_subwave_thread(self, url, assume_available=False):
         self._stop_subwave_thread()
         self._current_subwave_track = None
         self._subwave_detected = False
@@ -555,8 +569,10 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
         self.subwave_api_base = _subwave_api_base(url)
-        self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base)
+        self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base, assume_available=assume_available)
         self.subwave_thread.now_playing_ready.connect(self._on_subwave_now_playing)
         self.subwave_thread.unavailable.connect(self._on_subwave_unavailable)
         self.subwave_thread.finished.connect(self._on_subwave_thread_finished)
@@ -567,6 +583,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         thread = self.subwave_thread
         self.subwave_thread = None
         self.subwave_api_base = None
+        self._subwave_heartbeat_timer.stop()
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
         if thread is None:
             return
         try:
@@ -603,11 +622,36 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
+        self._subwave_heartbeat_timer.stop()
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("hidden")
+
+    def _on_subwave_heartbeat_timeout(self):
+        self._subwave_heartbeat_missed += 1
+        if self._subwave_heartbeat_missed == 1:
+            self._set_subwave_heartbeat_dot("stale")
+            logging.debug("SUB/WAVE heartbeat missed once, marking stale")
+            self._subwave_heartbeat_timer.start(15000)
+            return
+        logging.debug("SUB/WAVE heartbeat missed twice, restarting thread")
+        if self.current_idx is not None:
+            self._start_subwave_thread(self.stations[self.current_idx]["url"], assume_available=True)
+
+    def _set_subwave_heartbeat_dot(self, state):
+        if state == "hidden":
+            self.subwave_heartbeat_dot.setText("")
+            return
+        color = self._SUBWAVE_DOT_FRESH_COLOR if state == "fresh" else self._SUBWAVE_DOT_STALE_COLOR
+        self.subwave_heartbeat_dot.setStyleSheet(f"color: {color}; font-size: 10px;")
+        self.subwave_heartbeat_dot.setText("●")
 
     def _on_subwave_now_playing(self, payload):
         if self.current_idx is None:
             return
         self._subwave_detected = True
+        self._subwave_heartbeat_missed = 0
+        self._set_subwave_heartbeat_dot("fresh")
+        self._subwave_heartbeat_timer.start(15000)
         self._update_status()
 
         now_response = payload.get("now_playing") or {}
@@ -1270,6 +1314,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
 
 def main():
+    logging.basicConfig(level=os.environ.get("RADIOTOP_LOG", "WARNING"))
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_ORG)

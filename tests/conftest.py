@@ -35,15 +35,34 @@ class _StationDialogStub:
 class _LabelStub:
     def __init__(self):
         self.text_value = ""
+        self.style_value = ""
 
     def setText(self, text):
         self.text_value = text
 
     def setStyleSheet(self, style):
-        pass
+        self.style_value = style
 
     def text(self):
         return self.text_value
+
+
+class _TimerStub:
+    def __init__(self):
+        self.start_calls = []
+        self.stop_calls = 0
+        self.active = False
+
+    def start(self, ms):
+        self.start_calls.append(ms)
+        self.active = True
+
+    def stop(self):
+        self.stop_calls += 1
+        self.active = False
+
+    def isActive(self):
+        return self.active
 
 
 @pytest.fixture
@@ -64,6 +83,10 @@ class MainWindowStub(QObject):
     Shiboken requires to be a properly-constructed QObject.
     """
 
+    # Class attributes matching MainWindow for method access
+    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
+    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+
     def __init__(self, settings=None, stations=None):
         super().__init__()
         self.settings = settings
@@ -71,6 +94,8 @@ class MainWindowStub(QObject):
         self.current_idx = None
         self._current_icy_name = None
         self._subwave_detected = False
+        self._subwave_heartbeat_timer = None
+        self._subwave_heartbeat_missed = 0
         self.auto_reconnect_enabled = True
         self.reconnect_max_attempts = 3
         self._reconnect_attempts_remaining = 0
@@ -114,6 +139,21 @@ class MainWindowStub(QObject):
 
     def _refresh_current_artist_image(self):
         rt.MainWindow._refresh_current_artist_image(self)
+
+    def _set_subwave_heartbeat_dot(self, state):
+        rt.MainWindow._set_subwave_heartbeat_dot(self, state)
+
+    def _stop_subwave_thread(self):
+        rt.MainWindow._stop_subwave_thread(self)
+
+    def _on_subwave_now_playing(self, payload):
+        rt.MainWindow._on_subwave_now_playing(self, payload)
+
+    def _on_subwave_unavailable(self):
+        rt.MainWindow._on_subwave_unavailable(self)
+
+    def _on_subwave_thread_finished(self):
+        rt.MainWindow._on_subwave_thread_finished(self)
 
     def _save_custom_stations(self):
         self.save_custom_stations_calls += 1
