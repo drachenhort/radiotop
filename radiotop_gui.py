@@ -120,6 +120,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
     # without a bound each cache would grow for as long as the app stays open.
     MAX_CACHE_ENTRIES = 300
 
+    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
+    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("RadioTop")
@@ -230,11 +233,17 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.track_label.setStyleSheet("color: #3daee9;")
         root.addWidget(self.track_label)
 
+        subwave_row = QHBoxLayout()
+        subwave_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subwave_heartbeat_dot = QLabel("")
+        self.subwave_heartbeat_dot.setStyleSheet("font-size: 10px;")
+        subwave_row.addWidget(self.subwave_heartbeat_dot)
         self.subwave_detail_label = QLabel("")
         self.subwave_detail_label.setWordWrap(True)
         self.subwave_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.subwave_detail_label.setStyleSheet("color: #888888; font-size: 10px;")
-        root.addWidget(self.subwave_detail_label)
+        subwave_row.addWidget(self.subwave_detail_label)
+        root.addLayout(subwave_row)
 
         self.next_track_label = QLabel("")
         self.next_track_label.setWordWrap(True)
@@ -603,6 +612,14 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.show_label.setText("")
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
+
+    def _set_subwave_heartbeat_dot(self, state):
+        if state == "hidden":
+            self.subwave_heartbeat_dot.setText("")
+            return
+        color = self._SUBWAVE_DOT_FRESH_COLOR if state == "fresh" else self._SUBWAVE_DOT_STALE_COLOR
+        self.subwave_heartbeat_dot.setStyleSheet(f"color: {color}; font-size: 10px;")
+        self.subwave_heartbeat_dot.setText("●")
 
     def _on_subwave_now_playing(self, payload):
         if self.current_idx is None:

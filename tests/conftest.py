@@ -64,6 +64,10 @@ class MainWindowStub(QObject):
     Shiboken requires to be a properly-constructed QObject.
     """
 
+    # Class attributes matching MainWindow for method access
+    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
+    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+
     def __init__(self, settings=None, stations=None):
         super().__init__()
         self.settings = settings

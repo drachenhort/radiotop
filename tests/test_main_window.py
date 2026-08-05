@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from PySide6.QtMultimedia import QMediaPlayer
 
 import radiotop_gui as rt
+from conftest import _LabelStub
 
 
 # --------------------------------------------------------------- guess name
@@ -376,3 +377,31 @@ def test_on_track_title_applies_a_genuinely_new_title(main_window_stub):
 
     assert lookup_calls == ["New Artist - New Track"]
     assert stub._current_display_title == "New Artist - New Track"
+
+
+# --------------------------------------------------- subwave heartbeat dot
+def test_set_subwave_heartbeat_dot_hidden(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+
+    rt.MainWindow._set_subwave_heartbeat_dot(stub, "hidden")
+
+    assert stub.subwave_heartbeat_dot.text() == ""
+
+
+def test_set_subwave_heartbeat_dot_fresh(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+
+    rt.MainWindow._set_subwave_heartbeat_dot(stub, "fresh")
+
+    assert stub.subwave_heartbeat_dot.text() == "●"
+
+
+def test_set_subwave_heartbeat_dot_stale(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+
+    rt.MainWindow._set_subwave_heartbeat_dot(stub, "stale")
+
+    assert stub.subwave_heartbeat_dot.text() == "●"
