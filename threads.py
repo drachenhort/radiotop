@@ -13,7 +13,8 @@ import re
 import socket
 import ssl
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as _wait_futures
 import urllib.error
 import urllib.request
 from urllib.parse import quote, urlencode
@@ -112,10 +113,17 @@ def _cancellable_urlopen(req, timeout, stop_event):
         if stop_event.is_set():
             future.add_done_callback(_close_late_response)
             return None
-        try:
-            return future.result(timeout=_CONNECT_POLL_INTERVAL)
-        except FutureTimeoutError:
-            continue
+        # wait() (unlike future.result(timeout=...)) never raises on its
+        # own timeout - it just returns an empty done set - so a real
+        # socket.timeout from the urlopen() call itself can't be mistaken
+        # for "still polling" and swallowed. On Python 3.11+, socket.timeout
+        # and concurrent.futures.TimeoutError are BOTH aliases of the same
+        # builtin TimeoutError, so catching one to mean "keep polling" used
+        # to also catch the other, silently discarding a genuine connection
+        # timeout and spinning this loop forever instead of returning it.
+        done, _ = _wait_futures((future,), timeout=_CONNECT_POLL_INTERVAL)
+        if done:
+            return future.result()
 
 
 def _close_late_response(future):

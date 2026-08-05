@@ -1,3 +1,4 @@
+import socket
 import threading
 import time
 
@@ -54,6 +55,30 @@ def test_cancellable_urlopen_propagates_real_errors(monkeypatch):
 
     with pytest.raises(ValueError):
         _cancellable_urlopen(object(), timeout=10, stop_event=stop_event)
+
+
+def test_cancellable_urlopen_propagates_socket_timeout_promptly(monkeypatch):
+    # Regression test: on Python 3.11+, socket.timeout and
+    # concurrent.futures.TimeoutError are both aliases of the same builtin
+    # TimeoutError. _cancellable_urlopen's poll loop used to catch
+    # "TimeoutError" to mean "the 0.2s poll interval elapsed, keep
+    # waiting" - which also caught a genuine socket.timeout raised by the
+    # real urlopen() call once its own timeout fired, silently discarding
+    # it and spinning the poll loop forever instead of ever returning.
+    # This must propagate the real timeout instead of hanging.
+    def _raise_socket_timeout(req, timeout=None, **kwargs):
+        time.sleep(0.05)
+        raise socket.timeout("timed out")
+
+    monkeypatch.setattr("threads.urllib.request.urlopen", _raise_socket_timeout)
+    stop_event = threading.Event()  # never set - nothing should be relying on it here
+
+    start = time.monotonic()
+    with pytest.raises(TimeoutError):
+        _cancellable_urlopen(object(), timeout=10, stop_event=stop_event)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 1.0  # must not spin forever re-polling an already-failed future
 
 
 def test_cancellable_urlopen_closes_late_response_after_giving_up(monkeypatch):
