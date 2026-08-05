@@ -298,7 +298,7 @@ def _rig_for_subwave_now_playing(stub):
         set_subwave_details=lambda bpm, key: None,
         set_now_playing=lambda title: None,
     )
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = False
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._liked_key = lambda artist, title: rt.MainWindow._liked_key(artist, title)
     stub._on_track_title = lambda title: rt.MainWindow._on_track_title(stub, title)
@@ -381,40 +381,68 @@ def test_on_track_title_applies_a_genuinely_new_title(main_window_stub):
     assert stub._current_display_title == "New Artist - New Track"
 
 
-# --------------------------------------------------- subwave heartbeat dot
-def test_set_subwave_heartbeat_dot_hidden(main_window_stub):
+# --------------------------------------------- subwave heartbeat indicator
+# The heartbeat indicator is the "(SUB/WAVE)" suffix status_label appends
+# after the station name while playing - colored by _update_status based on
+# _subwave_heartbeat_ok, rather than a separate dot widget.
+def test_set_subwave_heartbeat_ok_false_sets_flag_and_updates_status(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = True
 
-    rt.MainWindow._set_subwave_heartbeat_dot(stub, "hidden")
+    rt.MainWindow._set_subwave_heartbeat_ok(stub, False)
 
-    assert stub.subwave_heartbeat_dot.text() == ""
+    assert stub._subwave_heartbeat_ok is False
 
 
-def test_set_subwave_heartbeat_dot_fresh(main_window_stub):
+def test_set_subwave_heartbeat_ok_true_sets_flag_and_updates_status(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = False
 
-    rt.MainWindow._set_subwave_heartbeat_dot(stub, "fresh")
+    rt.MainWindow._set_subwave_heartbeat_ok(stub, True)
 
-    assert stub.subwave_heartbeat_dot.text() == "●"
-    assert rt.MainWindow._SUBWAVE_DOT_FRESH_COLOR in stub.subwave_heartbeat_dot.style_value
+    assert stub._subwave_heartbeat_ok is True
 
 
-def test_set_subwave_heartbeat_dot_stale(main_window_stub):
+def test_update_status_colors_subwave_suffix_ok(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test Station"}]
+    stub._current_icy_name = None
+    stub._subwave_detected = True
+    stub._subwave_heartbeat_ok = True
+    stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.BufferedMedia,
+    )
 
-    rt.MainWindow._set_subwave_heartbeat_dot(stub, "stale")
+    rt.MainWindow._update_status(stub)
 
-    assert stub.subwave_heartbeat_dot.text() == "●"
-    assert rt.MainWindow._SUBWAVE_DOT_STALE_COLOR in stub.subwave_heartbeat_dot.style_value
+    assert "(SUB/WAVE)" in stub.status_label.text()
+    assert rt.MainWindow._SUBWAVE_HEARTBEAT_OK_COLOR in stub.status_label.text()
+
+
+def test_update_status_colors_subwave_suffix_stale(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test Station"}]
+    stub._current_icy_name = None
+    stub._subwave_detected = True
+    stub._subwave_heartbeat_ok = False
+    stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.BufferedMedia,
+    )
+
+    rt.MainWindow._update_status(stub)
+
+    assert "(SUB/WAVE)" in stub.status_label.text()
+    assert rt.MainWindow._SUBWAVE_HEARTBEAT_STALE_COLOR in stub.status_label.text()
 
 
 # ----------------------------------------------- subwave heartbeat timer
 def test_start_subwave_thread_resets_heartbeat_state(main_window_stub, monkeypatch):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = True
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 2
     stub.subwave_thread = None
@@ -436,13 +464,12 @@ def test_start_subwave_thread_resets_heartbeat_state(main_window_stub, monkeypat
 
     assert stub._subwave_heartbeat_missed == 0
     assert stub._subwave_heartbeat_timer.stop_calls == 1
-    assert stub.subwave_heartbeat_dot.text() == ""
+    assert stub._subwave_heartbeat_ok is False
 
 
 def test_on_subwave_now_playing_starts_and_resets_heartbeat_timer(main_window_stub):
     stub = main_window_stub
     _rig_for_subwave_now_playing(stub)
-    stub.subwave_heartbeat_dot = _LabelStub()
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 1
 
@@ -450,7 +477,7 @@ def test_on_subwave_now_playing_starts_and_resets_heartbeat_timer(main_window_st
 
     assert stub._subwave_heartbeat_missed == 0
     assert stub._subwave_heartbeat_timer.start_calls == [15000]
-    assert stub.subwave_heartbeat_dot.text() == "●"
+    assert stub._subwave_heartbeat_ok is True
 
 
 def test_stop_subwave_thread_stops_heartbeat_timer(main_window_stub):
@@ -459,20 +486,20 @@ def test_stop_subwave_thread_stops_heartbeat_timer(main_window_stub):
     stub.subwave_api_base = None
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 1
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = True
 
     rt.MainWindow._stop_subwave_thread(stub)
 
     assert stub._subwave_heartbeat_timer.stop_calls == 1
     assert stub._subwave_heartbeat_missed == 0
-    assert stub.subwave_heartbeat_dot.text() == ""
+    assert stub._subwave_heartbeat_ok is False
 
 
 def test_on_subwave_unavailable_stops_heartbeat_timer(main_window_stub):
     stub = main_window_stub
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 1
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = True
     stub.subwave_detail_label = _LabelStub()
     stub.next_track_label = _LabelStub()
     stub.show_label = _LabelStub()
@@ -482,13 +509,13 @@ def test_on_subwave_unavailable_stops_heartbeat_timer(main_window_stub):
 
     assert stub._subwave_heartbeat_timer.stop_calls == 1
     assert stub._subwave_heartbeat_missed == 0
-    assert stub.subwave_heartbeat_dot.text() == ""
+    assert stub._subwave_heartbeat_ok is False
 
 
 # ------------------------------------------------ subwave heartbeat timeout
 def test_heartbeat_timeout_first_miss_marks_stale_and_rearms(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_ok = True
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 0
     stub.current_idx = 0
@@ -499,14 +526,13 @@ def test_heartbeat_timeout_first_miss_marks_stale_and_rearms(main_window_stub):
     rt.MainWindow._on_subwave_heartbeat_timeout(stub)
 
     assert stub._subwave_heartbeat_missed == 1
-    assert stub.subwave_heartbeat_dot.text() == "●"
+    assert stub._subwave_heartbeat_ok is False
     assert stub._subwave_heartbeat_timer.start_calls == [15000]
     assert stub._start_subwave_thread_calls == []
 
 
 def test_heartbeat_timeout_second_miss_restarts_thread(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 1  # already missed once
     stub.current_idx = 0
@@ -523,7 +549,6 @@ def test_heartbeat_timeout_second_miss_restarts_thread(main_window_stub):
 
 def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_window_stub):
     stub = main_window_stub
-    stub.subwave_heartbeat_dot = _LabelStub()
     stub._subwave_heartbeat_timer = _TimerStub()
     stub._subwave_heartbeat_missed = 1
     stub.current_idx = None

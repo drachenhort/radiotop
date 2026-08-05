@@ -84,8 +84,8 @@ class MainWindowStub(QObject):
     """
 
     # Class attributes matching MainWindow for method access
-    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
-    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+    _SUBWAVE_HEARTBEAT_OK_COLOR = "#2ecc71"
+    _SUBWAVE_HEARTBEAT_STALE_COLOR = "#888888"
 
     def __init__(self, settings=None, stations=None):
         super().__init__()
@@ -96,6 +96,7 @@ class MainWindowStub(QObject):
         self._subwave_detected = False
         self._subwave_heartbeat_timer = None
         self._subwave_heartbeat_missed = 0
+        self._subwave_heartbeat_ok = False
         self.auto_reconnect_enabled = True
         self.reconnect_max_attempts = 3
         self._reconnect_attempts_remaining = 0
@@ -140,8 +141,8 @@ class MainWindowStub(QObject):
     def _refresh_current_artist_image(self):
         rt.MainWindow._refresh_current_artist_image(self)
 
-    def _set_subwave_heartbeat_dot(self, state):
-        rt.MainWindow._set_subwave_heartbeat_dot(self, state)
+    def _set_subwave_heartbeat_ok(self, ok):
+        rt.MainWindow._set_subwave_heartbeat_ok(self, ok)
 
     def _stop_subwave_thread(self):
         rt.MainWindow._stop_subwave_thread(self)

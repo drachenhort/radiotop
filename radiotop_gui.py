@@ -33,6 +33,7 @@ Notes:
   without prompting.
 """
 
+import html
 import json
 import logging
 import os
@@ -121,8 +122,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
     # without a bound each cache would grow for as long as the app stays open.
     MAX_CACHE_ENTRIES = 300
 
-    _SUBWAVE_DOT_FRESH_COLOR = "#2ecc71"
-    _SUBWAVE_DOT_STALE_COLOR = "#888888"
+    _SUBWAVE_HEARTBEAT_OK_COLOR = "#2ecc71"
+    _SUBWAVE_HEARTBEAT_STALE_COLOR = "#888888"
 
     def __init__(self):
         super().__init__()
@@ -169,6 +170,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._subwave_heartbeat_timer.setSingleShot(True)
         self._subwave_heartbeat_timer.timeout.connect(self._on_subwave_heartbeat_timeout)
         self._subwave_heartbeat_missed = 0
+        self._subwave_heartbeat_ok = False
         self.liked_tracks = self._load_liked_tracks()
         self.update_check_thread = None
         self._reconnect_attempts_remaining = 0
@@ -240,9 +242,6 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
         subwave_row = QHBoxLayout()
         subwave_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.subwave_heartbeat_dot = QLabel("")
-        self.subwave_heartbeat_dot.setStyleSheet("font-size: 10px;")
-        subwave_row.addWidget(self.subwave_heartbeat_dot)
         self.subwave_detail_label = QLabel("")
         self.subwave_detail_label.setWordWrap(True)
         self.subwave_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -257,6 +256,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         root.addWidget(self.next_track_label)
 
         self.status_label = QLabel("Stopped")
+        self.status_label.setTextFormat(Qt.TextFormat.RichText)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_font = QFont()
         status_font.setBold(True)
@@ -570,7 +570,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.like_btn.setEnabled(False)
         self.like_btn.setText("☆ Like")
         self._subwave_heartbeat_missed = 0
-        self._set_subwave_heartbeat_dot("hidden")
+        self._set_subwave_heartbeat_ok(False)
         self.subwave_api_base = _subwave_api_base(url)
         self.subwave_thread = SubwaveNowPlayingThread(self.subwave_api_base, assume_available=assume_available)
         self.subwave_thread.now_playing_ready.connect(self._on_subwave_now_playing)
@@ -585,7 +585,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.subwave_api_base = None
         self._subwave_heartbeat_timer.stop()
         self._subwave_heartbeat_missed = 0
-        self._set_subwave_heartbeat_dot("hidden")
+        self._set_subwave_heartbeat_ok(False)
         if thread is None:
             return
         try:
@@ -624,12 +624,12 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.like_btn.setText("☆ Like")
         self._subwave_heartbeat_timer.stop()
         self._subwave_heartbeat_missed = 0
-        self._set_subwave_heartbeat_dot("hidden")
+        self._set_subwave_heartbeat_ok(False)
 
     def _on_subwave_heartbeat_timeout(self):
         self._subwave_heartbeat_missed += 1
         if self._subwave_heartbeat_missed == 1:
-            self._set_subwave_heartbeat_dot("stale")
+            self._set_subwave_heartbeat_ok(False)
             logging.debug("SUB/WAVE heartbeat missed once, marking stale")
             self._subwave_heartbeat_timer.start(15000)
             return
@@ -637,22 +637,20 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         if self.current_idx is not None:
             self._start_subwave_thread(self.stations[self.current_idx]["url"], assume_available=True)
 
-    def _set_subwave_heartbeat_dot(self, state):
-        if state == "hidden":
-            self.subwave_heartbeat_dot.setText("")
-            return
-        color = self._SUBWAVE_DOT_FRESH_COLOR if state == "fresh" else self._SUBWAVE_DOT_STALE_COLOR
-        self.subwave_heartbeat_dot.setStyleSheet(f"color: {color}; font-size: 10px;")
-        self.subwave_heartbeat_dot.setText("●")
+    def _set_subwave_heartbeat_ok(self, ok):
+        """Drives the color of the "(SUB/WAVE)" suffix in status_label
+        (see _update_status) - green while polls are landing, grey once a
+        beat's been missed, standing in for a separate dot indicator."""
+        self._subwave_heartbeat_ok = ok
+        self._update_status()
 
     def _on_subwave_now_playing(self, payload):
         if self.current_idx is None:
             return
         self._subwave_detected = True
         self._subwave_heartbeat_missed = 0
-        self._set_subwave_heartbeat_dot("fresh")
         self._subwave_heartbeat_timer.start(15000)
-        self._update_status()
+        self._set_subwave_heartbeat_ok(True)
 
         now_response = payload.get("now_playing") or {}
         active_show = now_response.get("activeShow") or {}
@@ -1068,9 +1066,18 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             # name, which may be a name the user typed in and that
             # _on_icy_station_name therefore left untouched.
             display_name = self._current_icy_name or self.stations[self.current_idx]["name"]
+            text = f"Playing on - {html.escape(display_name)}"
             if self._subwave_detected:
-                display_name += " (SUB/WAVE)"
-            text = f"Playing on - {display_name}"
+                # The "(SUB/WAVE)" suffix doubles as the heartbeat indicator -
+                # green while SubwaveNowPlayingThread's polls are landing,
+                # grey once _on_subwave_heartbeat_timeout has flagged a
+                # missed beat - rather than a separate dot widget.
+                heartbeat_color = (
+                    self._SUBWAVE_HEARTBEAT_OK_COLOR
+                    if self._subwave_heartbeat_ok
+                    else self._SUBWAVE_HEARTBEAT_STALE_COLOR
+                )
+                text += f' <span style="color: {heartbeat_color};">(SUB/WAVE)</span>'
 
         self.status_label.setText(text)
         self.status_label.setStyleSheet(f"color: {STATUS_COLORS.get(status, '#888888')};")
