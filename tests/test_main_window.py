@@ -481,3 +481,52 @@ def test_on_subwave_unavailable_stops_heartbeat_timer(main_window_stub):
     assert stub._subwave_heartbeat_timer.stop_calls == 1
     assert stub._subwave_heartbeat_missed == 0
     assert stub.subwave_heartbeat_dot.text() == ""
+
+
+# ------------------------------------------------ subwave heartbeat timeout
+def test_heartbeat_timeout_first_miss_marks_stale_and_rearms(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 0
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url: stub._start_subwave_thread_calls.append(url)
+
+    rt.MainWindow._on_subwave_heartbeat_timeout(stub)
+
+    assert stub._subwave_heartbeat_missed == 1
+    assert stub.subwave_heartbeat_dot.text() == "●"
+    assert stub._subwave_heartbeat_timer.start_calls == [15000]
+    assert stub._start_subwave_thread_calls == []
+
+
+def test_heartbeat_timeout_second_miss_restarts_thread(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 1  # already missed once
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url: stub._start_subwave_thread_calls.append(url)
+
+    rt.MainWindow._on_subwave_heartbeat_timeout(stub)
+
+    assert stub._start_subwave_thread_calls == ["http://example.com:8000/stream.mp3"]
+
+
+def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_window_stub):
+    stub = main_window_stub
+    stub.subwave_heartbeat_dot = _LabelStub()
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_missed = 1
+    stub.current_idx = None
+    stub.stations = []
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url: stub._start_subwave_thread_calls.append(url)
+
+    rt.MainWindow._on_subwave_heartbeat_timeout(stub)
+
+    assert stub._start_subwave_thread_calls == []

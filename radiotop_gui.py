@@ -34,6 +34,7 @@ Notes:
 """
 
 import json
+import logging
 import os
 import signal
 import sys
@@ -626,7 +627,15 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._set_subwave_heartbeat_dot("hidden")
 
     def _on_subwave_heartbeat_timeout(self):
-        pass
+        self._subwave_heartbeat_missed += 1
+        if self._subwave_heartbeat_missed == 1:
+            self._set_subwave_heartbeat_dot("stale")
+            logging.debug("SUB/WAVE heartbeat missed once, marking stale")
+            self._subwave_heartbeat_timer.start(15000)
+            return
+        logging.debug("SUB/WAVE heartbeat missed twice, restarting thread")
+        if self.current_idx is not None:
+            self._start_subwave_thread(self.stations[self.current_idx]["url"])
 
     def _set_subwave_heartbeat_dot(self, state):
         if state == "hidden":
