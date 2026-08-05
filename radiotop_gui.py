@@ -240,14 +240,11 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.track_label.setStyleSheet("color: #3daee9;")
         root.addWidget(self.track_label)
 
-        subwave_row = QHBoxLayout()
-        subwave_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.subwave_detail_label = QLabel("")
         self.subwave_detail_label.setWordWrap(True)
         self.subwave_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.subwave_detail_label.setStyleSheet("color: #888888; font-size: 10px;")
-        subwave_row.addWidget(self.subwave_detail_label)
-        root.addLayout(subwave_row)
+        root.addWidget(self.subwave_detail_label)
 
         self.next_track_label = QLabel("")
         self.next_track_label.setWordWrap(True)
