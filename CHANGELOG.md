@@ -2,6 +2,24 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.45] - 2026-08-05
+
+- Fixed: `SubwaveNowPlayingThread` gave up polling a SUB/WAVE station's now-playing API for the
+  rest of the session after just 2 consecutive failures, even once it had already succeeded -
+  killing the show/song info and Like button on a brief network blip from the station, not just
+  when a station genuinely wasn't running SUB/WAVE.
+- Added: a two-stage heartbeat watchdog for SUB/WAVE polling - a missed beat marks it stale, a
+  second consecutive miss restarts the polling thread outright, so a hung connection recovers
+  without needing to switch stations.
+- Changed: the heartbeat indicator no longer needs its own dot widget - it's now the color of the
+  "(SUB/WAVE)" suffix already shown in the status line (green while polling, grey once a beat's
+  been missed).
+- Fixed: the genre line under the current track could wrap early and visually overlap the "Next:"
+  line below it, because it was still sitting in a centering layout left over from before the dot
+  widget existed.
+- Changed: clicking the tray icon while the window is already visible now raises/activates it
+  instead of hiding it.
+
 ## [0.44] - 2026-08-05
 
 - Fixed: a stalled station stream could leave the app unresponsive enough to need a force-close.
