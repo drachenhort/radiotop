@@ -1178,10 +1178,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
     # --------------------------------------------------------------- tray -
     def _on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.setVisible(not self.isVisible())
-            if self.isVisible():
-                self.raise_()
-                self.activateWindow()
+            self._show_window()
 
     def _show_window(self):
         self.showNormal()
