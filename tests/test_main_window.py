@@ -561,3 +561,81 @@ def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_wi
     rt.MainWindow._on_subwave_heartbeat_timeout(stub)
 
     assert stub._start_subwave_thread_calls == []
+
+
+def test_update_status_acquires_sleep_inhibitor_when_playing_and_enabled(main_window_stub):
+    main_window_stub.prevent_standby_enabled = True
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+    main_window_stub._update_status()
+    assert main_window_stub.sleep_calls == ["acquire"]
+
+
+def test_update_status_releases_sleep_inhibitor_when_playing_and_disabled(main_window_stub):
+    main_window_stub.prevent_standby_enabled = False
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+    main_window_stub._update_status()
+    assert main_window_stub.sleep_calls == ["release"]
+
+
+def test_update_status_releases_sleep_inhibitor_when_stopped(main_window_stub):
+    main_window_stub.prevent_standby_enabled = True
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.StoppedState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.NoMedia,
+    )
+    main_window_stub._update_status()
+    assert main_window_stub.sleep_calls == ["release"]
+
+
+def test_update_status_releases_sleep_inhibitor_when_paused(main_window_stub):
+    main_window_stub.prevent_standby_enabled = True
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PausedState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+    main_window_stub._update_status()
+    assert main_window_stub.sleep_calls == ["release"]
+
+
+def test_prevent_standby_toggled_off_while_playing_releases(main_window_stub):
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+    main_window_stub._on_prevent_standby_toggled(False)
+    assert main_window_stub.prevent_standby_enabled is False
+    assert main_window_stub.sleep_calls == ["release"]
+
+
+def test_prevent_standby_toggled_on_while_playing_acquires(main_window_stub):
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.LoadedMedia,
+    )
+    main_window_stub._on_prevent_standby_toggled(True)
+    assert main_window_stub.prevent_standby_enabled is True
+    assert main_window_stub.sleep_calls == ["acquire"]
+
+
+def test_prevent_standby_toggled_while_stopped_does_not_acquire(main_window_stub):
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.StoppedState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.NoMedia,
+    )
+    main_window_stub._on_prevent_standby_toggled(True)
+    assert main_window_stub.sleep_calls == ["release"]
+
+
+def test_prevent_standby_toggled_persists_to_settings(main_window_stub):
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.StoppedState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.NoMedia,
+    )
+    main_window_stub._on_prevent_standby_toggled(False)
+    assert main_window_stub.settings.value("prevent_standby", True, type=bool) is False

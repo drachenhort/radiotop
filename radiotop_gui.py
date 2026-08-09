@@ -88,6 +88,7 @@ from util import (
     _app_icon,
     _normalize_station_url,
     _resource_path,
+    _SleepInhibitor,
     _subwave_api_base,
     format_reconnect_message,
     select_output_device_index,
@@ -161,6 +162,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.notifications_enabled = self.settings.value("show_notifications", True, type=bool)
         self.auto_reconnect_enabled = self.settings.value("auto_reconnect_enabled", True, type=bool)
         self.reconnect_max_attempts = int(self.settings.value("reconnect_max_attempts", 3))
+        self.prevent_standby_enabled = self.settings.value("prevent_standby", True, type=bool)
+        self._sleep_inhibitor = _SleepInhibitor()
         self.subwave_thread = None
         self.subwave_api_base = None
         self._current_subwave_track = None
@@ -421,6 +424,12 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.similar_tracks_widen_action.setChecked(self.similar_tracks_widen)
         self.similar_tracks_widen_action.toggled.connect(self._on_similar_tracks_widen_toggled)
         settings_menu.addAction(self.similar_tracks_widen_action)
+
+        self.prevent_standby_action = QAction("Prevent System &Standby While Playing", self)
+        self.prevent_standby_action.setCheckable(True)
+        self.prevent_standby_action.setChecked(self.prevent_standby_enabled)
+        self.prevent_standby_action.toggled.connect(self._on_prevent_standby_toggled)
+        settings_menu.addAction(self.prevent_standby_action)
 
         settings_menu.addSeparator()
         self.auto_reconnect_action = QAction("Automatically &Reconnect on Drop", self)
@@ -916,6 +925,14 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.notifications_enabled = checked
         self.settings.setValue("show_notifications", checked)
 
+    def _on_prevent_standby_toggled(self, checked):
+        self.prevent_standby_enabled = checked
+        self.settings.setValue("prevent_standby", checked)
+        if checked and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._sleep_inhibitor.acquire()
+        else:
+            self._sleep_inhibitor.release()
+
     def _on_auto_reconnect_toggled(self, checked):
         self.auto_reconnect_enabled = checked
         self.settings.setValue("auto_reconnect_enabled", checked)
@@ -1084,6 +1101,11 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self.play_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         else:
             self.play_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+
+        if state == QMediaPlayer.PlaybackState.PlayingState and self.prevent_standby_enabled:
+            self._sleep_inhibitor.acquire()
+        else:
+            self._sleep_inhibitor.release()
 
     def _on_error(self, error, error_string):
         self.status_label.setText("Error")
@@ -1271,6 +1293,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._stop_album_art_thread()
         self._stop_similar_tracks_thread()
         self.player.stop()
+        self._sleep_inhibitor.release()
         if self.stream_proxy is not None:
             self.stream_proxy.abort_active()
             self.stream_proxy.shutdown()

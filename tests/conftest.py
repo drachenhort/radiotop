@@ -98,6 +98,12 @@ class MainWindowStub(QObject):
         self._subwave_heartbeat_missed = 0
         self._subwave_heartbeat_ok = False
         self.auto_reconnect_enabled = True
+        self.prevent_standby_enabled = True
+        self.sleep_calls = []
+        self._sleep_inhibitor = SimpleNamespace(
+            acquire=lambda: self.sleep_calls.append("acquire"),
+            release=lambda: self.sleep_calls.append("release"),
+        )
         self.reconnect_max_attempts = 3
         self._reconnect_attempts_remaining = 0
         self._playback_generation = 0
@@ -137,6 +143,9 @@ class MainWindowStub(QObject):
 
     def _update_status(self):
         rt.MainWindow._update_status(self)
+
+    def _on_prevent_standby_toggled(self, checked):
+        rt.MainWindow._on_prevent_standby_toggled(self, checked)
 
     def _refresh_current_artist_image(self):
         rt.MainWindow._refresh_current_artist_image(self)
