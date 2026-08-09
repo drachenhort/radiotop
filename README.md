@@ -28,6 +28,7 @@ Built with [PySide6](https://doc.qt.io/qtforpython/) (Qt for Python), so it auto
 - 🔎 Automatic track lookup — genre, release year, and album via [MusicBrainz](https://musicbrainz.org/), with optional richer genre tags from [Last.fm](https://www.last.fm/api)
 - 🖼️ Artist photos (Discogs → Wikipedia → Last.fm) and album cover art (Cover Art Archive)
 - 🔔 Native desktop notifications when a new station or track starts playing (toggleable)
+- 💤 Prevents the system from going to sleep while a station is playing (toggleable, on by default)
 - 🔊 Output device selector, with automatic refresh when devices change
 - 🗔 Closing the window asks whether to quit or keep running in the system tray; tray menu for quick play/pause/stop/quit
 - 🎨 Zero custom theming — inherits your system's Qt palette and icons on both Linux and Windows
@@ -114,7 +115,7 @@ RadioTop shows a native desktop notification when a new station or track starts 
 
 ## Configuration & data
 
-RadioTop stores your custom stations, volume, output device, notification preference, and API keys/tokens via `QSettings` — an INI-style config file at `~/.config/radiotop/RadioTop.conf` on Linux, or the Registry (`HKEY_CURRENT_USER\Software\radiotop\RadioTop`) on Windows. No separate config file to manage by hand either way.
+RadioTop stores your custom stations, volume, output device, notification preference, prevent-standby preference, and API keys/tokens via `QSettings` — an INI-style config file at `~/.config/radiotop/RadioTop.conf` on Linux, or the Registry (`HKEY_CURRENT_USER\Software\radiotop\RadioTop`) on Windows. No separate config file to manage by hand either way.
 
 ## Troubleshooting
 

@@ -1,4 +1,8 @@
+from unittest.mock import MagicMock, patch
+
 from util import (
+    _SleepInhibitor,
+    _set_pdeathsig,
     format_reconnect_message,
     select_output_device_index,
     should_attempt_reconnect,
@@ -71,12 +75,6 @@ def test_should_notify_immediately_false_when_artist_and_no_icon():
     assert should_notify_immediately("Some Artist", icon_cached=False) is False
 
 
-import subprocess
-from unittest.mock import MagicMock, patch
-
-from util import _SleepInhibitor
-
-
 def test_sleep_inhibitor_windows_acquire_calls_set_thread_execution_state():
     inhibitor = _SleepInhibitor()
     fake_kernel32 = MagicMock()
@@ -103,12 +101,22 @@ def test_sleep_inhibitor_macos_acquire_spawns_caffeinate():
     inhibitor = _SleepInhibitor()
     fake_proc = MagicMock()
     with patch("util.sys.platform", "darwin"), patch(
-        "util.subprocess.Popen", return_value=fake_proc
-    ) as fake_popen:
+        "util.os.getpid", return_value=4242
+    ), patch("util.subprocess.Popen", return_value=fake_proc) as fake_popen:
         inhibitor.acquire()
-    fake_popen.assert_called_once_with(["caffeinate", "-i"])
+    fake_popen.assert_called_once_with(["caffeinate", "-i", "-w", "4242"])
     assert inhibitor._process is fake_proc
     assert inhibitor._active is True
+
+
+def test_sleep_inhibitor_macos_acquire_missing_caffeinate_is_noop():
+    inhibitor = _SleepInhibitor()
+    with patch("util.sys.platform", "darwin"), patch(
+        "util.subprocess.Popen", side_effect=FileNotFoundError
+    ):
+        inhibitor.acquire()  # must not raise
+    assert inhibitor._active is False
+    assert inhibitor._process is None
 
 
 def test_sleep_inhibitor_macos_release_terminates_process():
@@ -138,7 +146,8 @@ def test_sleep_inhibitor_linux_acquire_spawns_systemd_inhibit():
             "--why=Streaming audio",
             "sleep",
             "infinity",
-        ]
+        ],
+        preexec_fn=_set_pdeathsig,
     )
     assert inhibitor._process is fake_proc
     assert inhibitor._active is True
@@ -179,6 +188,6 @@ def test_sleep_inhibitor_acquire_is_idempotent():
 
 def test_sleep_inhibitor_release_before_acquire_is_noop():
     inhibitor = _SleepInhibitor()
-    with patch("util.sys.platform", "darwin") as _:
+    with patch("util.sys.platform", "darwin"):
         inhibitor.release()  # must not raise, no process to terminate
     assert inhibitor._active is False

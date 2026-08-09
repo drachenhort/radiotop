@@ -10,6 +10,7 @@ import ctypes
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import urllib.request
@@ -155,6 +156,14 @@ _ES_CONTINUOUS = 0x80000000
 _ES_SYSTEM_REQUIRED = 0x00000001
 
 
+def _set_pdeathsig():
+    """preexec_fn for the Linux systemd-inhibit child: ask the kernel to
+    deliver SIGTERM to it if this (parent) process dies for any reason -
+    crash, OOM-kill, kill -9 - so the inhibitor lock doesn't outlive
+    RadioTop and silently block system suspend forever."""
+    ctypes.CDLL("libc.so.6").prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG = 1
+
+
 class _SleepInhibitor:
     """Prevents the OS from suspending the system while active. Platform-specific,
     idempotent acquire()/release() - repeated or out-of-order calls are safe no-ops.
@@ -175,7 +184,19 @@ class _SleepInhibitor:
                 _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED
             )
         elif sys.platform == "darwin":
-            self._process = subprocess.Popen(["caffeinate", "-i"])
+            try:
+                # -w <pid>: caffeinate exits on its own once the watched
+                # RadioTop process dies, instead of surviving as an orphan
+                # that keeps blocking sleep with no RadioTop left to explain
+                # why (crash, OOM-kill, kill -9).
+                self._process = subprocess.Popen(
+                    ["caffeinate", "-i", "-w", str(os.getpid())]
+                )
+            except FileNotFoundError:
+                logging.warning(
+                    "caffeinate not found; standby prevention unavailable on this system"
+                )
+                return
         else:
             try:
                 self._process = subprocess.Popen(
@@ -186,7 +207,11 @@ class _SleepInhibitor:
                         "--why=Streaming audio",
                         "sleep",
                         "infinity",
-                    ]
+                    ],
+                    # Have the kernel kill this child if RadioTop dies for
+                    # any reason, so an orphaned systemd-inhibit doesn't keep
+                    # blocking system suspend indefinitely.
+                    preexec_fn=_set_pdeathsig,
                 )
             except FileNotFoundError:
                 logging.warning(

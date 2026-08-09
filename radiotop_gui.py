@@ -1102,7 +1102,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         else:
             self.play_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
 
-        if state == QMediaPlayer.PlaybackState.PlayingState and self.prevent_standby_enabled:
+        if status in ("Playing", "Buffering...") and self.prevent_standby_enabled:
             self._sleep_inhibitor.acquire()
         else:
             self._sleep_inhibitor.release()

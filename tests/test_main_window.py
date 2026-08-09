@@ -593,6 +593,16 @@ def test_update_status_releases_sleep_inhibitor_when_stopped(main_window_stub):
     assert main_window_stub.sleep_calls == ["release"]
 
 
+def test_update_status_releases_sleep_inhibitor_when_playing_but_invalid_media(main_window_stub):
+    main_window_stub.prevent_standby_enabled = True
+    main_window_stub.player = SimpleNamespace(
+        playbackState=lambda: QMediaPlayer.PlaybackState.PlayingState,
+        mediaStatus=lambda: QMediaPlayer.MediaStatus.InvalidMedia,
+    )
+    main_window_stub._update_status()
+    assert main_window_stub.sleep_calls == ["release"]
+
+
 def test_update_status_releases_sleep_inhibitor_when_paused(main_window_stub):
     main_window_stub.prevent_standby_enabled = True
     main_window_stub.player = SimpleNamespace(

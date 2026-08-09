@@ -123,7 +123,7 @@ Everything is in `radiotop_gui.py`, organized top-to-bottom as:
 ## Persistence
 
 All persistent state (custom stations, volume, output device, notification toggle, similar-tracks
-widen toggle, Last.fm/Discogs credentials) goes through `QSettings(APP_ORG, APP_NAME)` — an INI file at
+widen toggle, prevent-standby toggle, Last.fm/Discogs credentials) goes through `QSettings(APP_ORG, APP_NAME)` — an INI file at
 `~/.config/radiotop/RadioTop.conf` on Linux, or the registry
 (`HKEY_CURRENT_USER\Software\radiotop\RadioTop`) on Windows. There is no separate config file format
 to maintain; add new persisted fields as additional `QSettings` keys read/written directly where

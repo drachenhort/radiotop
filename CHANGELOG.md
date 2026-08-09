@@ -4,6 +4,8 @@ All notable changes to RadioTop are documented in this file.
 
 ## [0.45] - 2026-08-05
 
+- Added: option to prevent system standby while a station is playing (Settings menu, on by
+  default).
 - Fixed: `SubwaveNowPlayingThread` gave up polling a SUB/WAVE station's now-playing API for the
   rest of the session after just 2 consecutive failures, even once it had already succeeded -
   killing the show/song info and Like button on a brief network blip from the station, not just
