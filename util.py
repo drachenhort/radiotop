@@ -6,8 +6,11 @@ on each other's modules, so both radiotop_gui.py and dialogs.py import
 from here rather than from one another, avoiding a circular import.
 """
 
+import ctypes
 import json
+import logging
 import os
+import subprocess
 import sys
 import urllib.request
 from urllib.parse import urlparse, urlunparse
@@ -146,3 +149,58 @@ def _app_icon():
             return icon
     fallback = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume)
     return QIcon.fromTheme("audio-x-generic", fallback)
+
+
+_ES_CONTINUOUS = 0x80000000
+_ES_SYSTEM_REQUIRED = 0x00000001
+
+
+class _SleepInhibitor:
+    """Prevents the OS from suspending the system while active. Platform-specific,
+    idempotent acquire()/release() - repeated or out-of-order calls are safe no-ops.
+
+    Only inhibits *system* sleep, not display sleep, matching how other media
+    players behave: the screen can still turn off while audio keeps playing.
+    """
+
+    def __init__(self):
+        self._active = False
+        self._process = None  # macOS/Linux: the caffeinate/systemd-inhibit subprocess
+
+    def acquire(self):
+        if self._active:
+            return
+        if sys.platform == "win32":
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED
+            )
+        elif sys.platform == "darwin":
+            self._process = subprocess.Popen(["caffeinate", "-i"])
+        else:
+            try:
+                self._process = subprocess.Popen(
+                    [
+                        "systemd-inhibit",
+                        "--what=idle:sleep",
+                        "--who=RadioTop",
+                        "--why=Streaming audio",
+                        "sleep",
+                        "infinity",
+                    ]
+                )
+            except FileNotFoundError:
+                logging.warning(
+                    "systemd-inhibit not found; standby prevention unavailable on this system"
+                )
+                return
+        self._active = True
+
+    def release(self):
+        if not self._active:
+            return
+        if sys.platform == "win32":
+            ctypes.windll.kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
+        elif self._process is not None:
+            self._process.terminate()
+            self._process = None
+        self._active = False
