@@ -2,6 +2,13 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.48] - 2026-08-10
+
+- Fixed: SUB/WAVE detection could permanently give up on a station that genuinely runs SUB/WAVE,
+  if the initial 2-poll probe (10s) hit a brief network blip or caught the station's API before
+  it was ready. Now re-probed once per new track/artist that arrives via ICY metadata while still
+  undetected, up to 5 extra tries per station, instead of only at station connect.
+
 ## [0.47] - 2026-08-10
 
 - Fixed: track/artist/album lookup (MusicBrainz/Last.fm/iTunes) that failed once for a title got
