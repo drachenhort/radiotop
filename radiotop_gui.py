@@ -98,7 +98,7 @@ from util import (
 
 APP_ORG = "radiotop"
 APP_NAME = "RadioTop"
-APP_VERSION = "0.47"  # bumped alongside the CHANGELOG entry at release time
+APP_VERSION = "0.48"  # bumped alongside the CHANGELOG entry at release time
 
 UPDATE_CHECK_INTERVAL_SECS = 24 * 60 * 60  # don't auto-check more than once a day
 
@@ -125,6 +125,12 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 
     _SUBWAVE_HEARTBEAT_OK_COLOR = "#2ecc71"
     _SUBWAVE_HEARTBEAT_STALE_COLOR = "#888888"
+
+    # How many extra times to re-probe a station's SUB/WAVE API, one retry
+    # per new track/artist, after the initial 2-poll probe gave up. Bounded
+    # so a station that genuinely isn't running SUB/WAVE doesn't get probed
+    # forever, one retry per track.
+    SUBWAVE_DETECT_MAX_RETRIES = 5
 
     def __init__(self):
         super().__init__()
@@ -174,6 +180,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._subwave_heartbeat_timer.timeout.connect(self._on_subwave_heartbeat_timeout)
         self._subwave_heartbeat_missed = 0
         self._subwave_heartbeat_ok = False
+        self._subwave_detect_retries_left = 0
         self.liked_tracks = self._load_liked_tracks()
         self.update_check_thread = None
         self._reconnect_attempts_remaining = 0
@@ -566,10 +573,12 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._start_metadata_thread(station["url"])
         self._start_subwave_thread(station["url"])
 
-    def _start_subwave_thread(self, url, assume_available=False):
+    def _start_subwave_thread(self, url, assume_available=False, is_retry=False):
         self._stop_subwave_thread()
         self._current_subwave_track = None
         self._subwave_detected = False
+        if not is_retry:
+            self._subwave_detect_retries_left = self.SUBWAVE_DETECT_MAX_RETRIES
         self.subwave_detail_label.setText("")
         self.next_track_label.setText("")
         self.show_label.setText("")
@@ -631,6 +640,24 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._subwave_heartbeat_timer.stop()
         self._subwave_heartbeat_missed = 0
         self._set_subwave_heartbeat_ok(False)
+
+    def _maybe_retry_subwave_detection(self):
+        """Re-probe the SUB/WAVE API on each new track/artist while it's
+        still undetected for the current station. The initial probe in
+        SubwaveNowPlayingThread gives up after just 2 failed polls (10s) to
+        avoid hammering a station that was never going to answer - but that
+        can also be a station just coming up, or a brief network blip,
+        rather than proof it isn't running SUB/WAVE. Bounded by
+        SUBWAVE_DETECT_MAX_RETRIES so a genuinely non-SUB/WAVE station
+        doesn't get probed forever."""
+        if self.current_idx is None:
+            return
+        if self.subwave_thread is not None or self.subwave_api_base is not None:
+            return  # still probing, or already detected
+        if self._subwave_detect_retries_left <= 0:
+            return
+        self._subwave_detect_retries_left -= 1
+        self._start_subwave_thread(self.stations[self.current_idx]["url"], is_retry=True)
 
     def _on_subwave_heartbeat_timeout(self):
         self._subwave_heartbeat_missed += 1
@@ -838,6 +865,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             # many times it's polled.
             return
         self._current_display_title = title
+        self._maybe_retry_subwave_detection()
         self._set_track_label(title)
         self.track_info_dialog.set_now_playing(title)
         self._lookup_track_info(title)

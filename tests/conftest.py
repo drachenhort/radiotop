@@ -86,6 +86,7 @@ class MainWindowStub(QObject):
     # Class attributes matching MainWindow for method access
     _SUBWAVE_HEARTBEAT_OK_COLOR = "#2ecc71"
     _SUBWAVE_HEARTBEAT_STALE_COLOR = "#888888"
+    SUBWAVE_DETECT_MAX_RETRIES = 5
 
     def __init__(self, settings=None, stations=None):
         super().__init__()
@@ -97,6 +98,9 @@ class MainWindowStub(QObject):
         self._subwave_heartbeat_timer = None
         self._subwave_heartbeat_missed = 0
         self._subwave_heartbeat_ok = False
+        self.subwave_thread = None
+        self.subwave_api_base = None
+        self._subwave_detect_retries_left = 0
         self.auto_reconnect_enabled = True
         self.prevent_standby_enabled = True
         self.sleep_calls = []
@@ -164,6 +168,9 @@ class MainWindowStub(QObject):
 
     def _on_subwave_thread_finished(self):
         rt.MainWindow._on_subwave_thread_finished(self)
+
+    def _maybe_retry_subwave_detection(self):
+        rt.MainWindow._maybe_retry_subwave_detection(self)
 
     def _save_custom_stations(self):
         self.save_custom_stations_calls += 1

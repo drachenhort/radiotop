@@ -381,6 +381,28 @@ def test_on_track_title_applies_a_genuinely_new_title(main_window_stub):
     assert stub._current_display_title == "New Artist - New Track"
 
 
+def test_on_track_title_re_probes_subwave_when_still_undetected(main_window_stub):
+    stub = main_window_stub
+    stub._current_display_title = "Old Artist - Old Track"
+    stub._set_track_label = lambda title, year=None: None
+    stub.track_info_dialog = SimpleNamespace(set_now_playing=lambda title: None)
+    stub._lookup_track_info = lambda title: None
+    stub._fetch_artist_image = lambda artist: None
+    stub._schedule_track_notification = lambda artist, body: None
+    stub._pending_notification_artist = None
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._subwave_detect_retries_left = 3
+    retry_calls = []
+    stub._maybe_retry_subwave_detection = lambda: retry_calls.append(True)
+
+    rt.MainWindow._on_track_title(stub, "New Artist - New Track")
+
+    assert retry_calls == [True]
+
+
 # --------------------------------------------- subwave heartbeat indicator
 # The heartbeat indicator is the "(SUB/WAVE)" suffix status_label appends
 # after the station name while playing - colored by _update_status based on
@@ -561,6 +583,147 @@ def test_heartbeat_timeout_second_miss_no_current_station_does_not_crash(main_wi
     rt.MainWindow._on_subwave_heartbeat_timeout(stub)
 
     assert stub._start_subwave_thread_calls == []
+
+
+# ------------------------------------------ subwave detection retry on track
+def test_maybe_retry_subwave_detection_retries_when_undetected(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._subwave_detect_retries_left = 3
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url, is_retry=False: stub._start_subwave_thread_calls.append(
+        (url, is_retry)
+    )
+
+    rt.MainWindow._maybe_retry_subwave_detection(stub)
+
+    assert stub._start_subwave_thread_calls == [("http://example.com:8000/stream.mp3", True)]
+    assert stub._subwave_detect_retries_left == 2
+
+
+def test_maybe_retry_subwave_detection_noop_once_detected(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub.subwave_thread = None
+    stub.subwave_api_base = "http://example.com:8000"  # already detected
+    stub._subwave_detect_retries_left = 3
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url, is_retry=False: stub._start_subwave_thread_calls.append(
+        (url, is_retry)
+    )
+
+    rt.MainWindow._maybe_retry_subwave_detection(stub)
+
+    assert stub._start_subwave_thread_calls == []
+    assert stub._subwave_detect_retries_left == 3
+
+
+def test_maybe_retry_subwave_detection_noop_while_probing(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub.subwave_thread = SimpleNamespace()  # a probe is already in flight
+    stub.subwave_api_base = None
+    stub._subwave_detect_retries_left = 3
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url, is_retry=False: stub._start_subwave_thread_calls.append(
+        (url, is_retry)
+    )
+
+    rt.MainWindow._maybe_retry_subwave_detection(stub)
+
+    assert stub._start_subwave_thread_calls == []
+    assert stub._subwave_detect_retries_left == 3
+
+
+def test_maybe_retry_subwave_detection_stops_once_budget_exhausted(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub.stations = [{"url": "http://example.com:8000/stream.mp3", "name": "Test"}]
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._subwave_detect_retries_left = 0
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url, is_retry=False: stub._start_subwave_thread_calls.append(
+        (url, is_retry)
+    )
+
+    rt.MainWindow._maybe_retry_subwave_detection(stub)
+
+    assert stub._start_subwave_thread_calls == []
+
+
+def test_maybe_retry_subwave_detection_no_current_station_does_not_crash(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = None
+    stub.stations = []
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._subwave_detect_retries_left = 3
+    stub._start_subwave_thread_calls = []
+    stub._start_subwave_thread = lambda url, is_retry=False: stub._start_subwave_thread_calls.append(
+        (url, is_retry)
+    )
+
+    rt.MainWindow._maybe_retry_subwave_detection(stub)
+
+    assert stub._start_subwave_thread_calls == []
+
+
+def test_start_subwave_thread_resets_retry_budget_on_fresh_start(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub._subwave_detect_retries_left = 0  # exhausted from a previous station
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_ok = False
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._current_subwave_track = None
+    stub.subwave_detail_label = _LabelStub()
+    stub.next_track_label = _LabelStub()
+    stub.show_label = _LabelStub()
+    stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
+    monkeypatch.setattr(rt, "SubwaveNowPlayingThread", lambda api_base, assume_available=False: SimpleNamespace(
+        now_playing_ready=SimpleNamespace(connect=lambda f: None),
+        unavailable=SimpleNamespace(connect=lambda f: None),
+        finished=SimpleNamespace(connect=lambda f: None),
+        start=lambda: None,
+        deleteLater=lambda: None,
+    ))
+
+    rt.MainWindow._start_subwave_thread(stub, "http://example.com:8000/stream.mp3")
+
+    assert stub._subwave_detect_retries_left == rt.MainWindow.SUBWAVE_DETECT_MAX_RETRIES
+
+
+def test_start_subwave_thread_retry_does_not_reset_budget(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.current_idx = 0
+    stub._subwave_detect_retries_left = 2  # mid-budget, from _maybe_retry_subwave_detection
+    stub._subwave_heartbeat_timer = _TimerStub()
+    stub._subwave_heartbeat_ok = False
+    stub.subwave_thread = None
+    stub.subwave_api_base = None
+    stub._current_subwave_track = None
+    stub.subwave_detail_label = _LabelStub()
+    stub.next_track_label = _LabelStub()
+    stub.show_label = _LabelStub()
+    stub.like_btn = SimpleNamespace(setEnabled=lambda v: None, setText=lambda t: None)
+    monkeypatch.setattr(rt, "SubwaveNowPlayingThread", lambda api_base, assume_available=False: SimpleNamespace(
+        now_playing_ready=SimpleNamespace(connect=lambda f: None),
+        unavailable=SimpleNamespace(connect=lambda f: None),
+        finished=SimpleNamespace(connect=lambda f: None),
+        start=lambda: None,
+        deleteLater=lambda: None,
+    ))
+
+    rt.MainWindow._start_subwave_thread(stub, "http://example.com:8000/stream.mp3", is_retry=True)
+
+    assert stub._subwave_detect_retries_left == 2
 
 
 def test_update_status_acquires_sleep_inhibitor_when_playing_and_enabled(main_window_stub):
