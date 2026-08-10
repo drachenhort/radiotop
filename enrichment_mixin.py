@@ -55,7 +55,12 @@ class EnrichmentMixin:
         self.lookup_thread.start()
 
     def _on_lookup_result(self, result):
-        self._cache_set(self.lookup_cache, result["raw_title"], result)
+        if result.get("found"):
+            # Only cache successful lookups. A failure (all three sources
+            # unreachable/no answer) is often transient - caching it would
+            # permanently block retries for this title if it repeats later
+            # in the session (common for radio).
+            self._cache_set(self.lookup_cache, result["raw_title"], result)
         if result["raw_title"] != self.last_lookup_title:
             return  # superseded by a newer track since this lookup started
         self.track_info_dialog.apply_lookup(result)
