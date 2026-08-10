@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.47] - 2026-08-10
+
+- Fixed: track/artist/album lookup (MusicBrainz/Last.fm/iTunes) that failed once for a title got
+  cached as failed and never retried for the rest of the session, even if the same track played
+  again later - not just SUB/WAVE polling, same class of bug 0.45 fixed there.
+
 ## [0.46] - 2026-08-09
 
 - Added: option to prevent system standby while a station is playing (Settings menu, on by
