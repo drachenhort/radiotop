@@ -11,3 +11,4 @@ venv/
 build/
 dist/
 *.spec.bak
+.aider*
