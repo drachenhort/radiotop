@@ -1368,6 +1368,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
 def main():
     logging.basicConfig(level=os.environ.get("RADIOTOP_LOG", "WARNING"))
     app = QApplication(sys.argv)
+    app.setDesktopFileName("radiotop")
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_ORG)
     app.setQuitOnLastWindowClosed(False)
