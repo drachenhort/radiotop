@@ -98,7 +98,7 @@ from util import (
 
 APP_ORG = "radiotop"
 APP_NAME = "RadioTop"
-APP_VERSION = "0.48"  # bumped alongside the CHANGELOG entry at release time
+APP_VERSION = "0.49"  # bumped alongside the CHANGELOG entry at release time
 
 UPDATE_CHECK_INTERVAL_SECS = 24 * 60 * 60  # don't auto-check more than once a day
 

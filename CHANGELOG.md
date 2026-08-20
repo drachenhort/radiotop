@@ -2,6 +2,11 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.49] - 2026-08-20
+
+- Fixed: taskbar grouped/misidentified RadioTop with any other bare `python3 script.py` process,
+  since Qt defaults WM_CLASS to argv[0]. Now sets a unique desktop file name explicitly.
+
 ## [0.48] - 2026-08-10
 
 - Fixed: SUB/WAVE detection could permanently give up on a station that genuinely runs SUB/WAVE,
