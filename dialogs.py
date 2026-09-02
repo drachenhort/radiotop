@@ -17,6 +17,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -371,6 +372,10 @@ class EditStationDialog(QDialog):
         form.addRow("URL:", self.url_edit)
         layout.addLayout(form)
 
+        self.autofill_check = QCheckBox("Auto-fill port/filename if missing")
+        self.autofill_check.setChecked(True)
+        layout.addWidget(self.autofill_check)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -380,6 +385,9 @@ class EditStationDialog(QDialog):
 
     def values(self):
         return self.name_edit.text().strip(), self.url_edit.text().strip()
+
+    def autofill_enabled(self):
+        return self.autofill_check.isChecked()
 
 
 class StationListDialog(QDialog):
@@ -421,6 +429,10 @@ class StationListDialog(QDialog):
         add_btn.clicked.connect(self._add_station)
         url_row.addWidget(add_btn)
         layout.addLayout(url_row)
+
+        self.autofill_check = QCheckBox("Auto-fill port/filename if missing")
+        self.autofill_check.setChecked(True)
+        layout.addWidget(self.autofill_check)
 
         manage_row = QHBoxLayout()
         self.edit_btn = QPushButton("Edit")
@@ -505,7 +517,9 @@ class StationListDialog(QDialog):
         if not url or not (url.startswith("http://") or url.startswith("https://")):
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid http:// or https:// stream URL.")
             return
-        url, was_adjusted = _normalize_station_url(url)
+        was_adjusted = False
+        if dlg.autofill_enabled():
+            url, was_adjusted = _normalize_station_url(url)
         old_guess = self.main._guess_name(station["url"])
         if not name:
             name = self.main._guess_name(url)
@@ -550,7 +564,9 @@ class StationListDialog(QDialog):
         if not (url.startswith("http://") or url.startswith("https://")):
             QMessageBox.warning(self, "Invalid URL", "Please enter a valid http:// or https:// stream URL.")
             return
-        url, was_adjusted = _normalize_station_url(url)
+        was_adjusted = False
+        if self.autofill_check.isChecked():
+            url, was_adjusted = _normalize_station_url(url)
         name = self.name_edit.text().strip() or self.main._guess_name(url)
         station = {"name": name, "url": url, "custom": True}
         self.main.stations.append(station)
