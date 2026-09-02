@@ -2,6 +2,12 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.50] - 2026-09-02
+
+- Added: opt-out checkbox for the auto-filled port (7700) and `stream.mp3` filename when adding or
+  editing a station, so a URL like `http://192.168.1.50` can be saved exactly as typed instead of
+  always getting the SUB/WAVE defaults appended.
+
 ## [0.49] - 2026-08-20
 
 - Fixed: taskbar grouped/misidentified RadioTop with any other bare `python3 script.py` process,
