@@ -1303,6 +1303,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             QDesktopServices.openUrl(QUrl(html_url))
 
     def quit_app(self):
+        _shutdown_log.debug("quit_app: entered, _quitting=%s", self._quitting)
         if self._quitting:
             return
         self._quitting = True
@@ -1311,20 +1312,34 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         # QApplication.quit() is called - hide it explicitly rather than
         # relying on teardown to do it implicitly. Harmless no-op on
         # platforms (like Windows) where this isn't an issue.
+        _shutdown_log.debug("quit_app: tray.hide()")
         self.tray.hide()
-        self._stop_metadata_thread()
-        self._stop_subwave_thread()
-        self._stop_subwave_request_threads()
-        self._stop_update_check_thread()
-        self._stop_lookup_thread()
-        self._stop_artist_image_thread()
-        self._stop_album_art_thread()
-        self._stop_similar_tracks_thread()
+        _shutdown_log.debug("quit_app: tray.hide() returned")
+        for step_name, step in (
+            ("_stop_metadata_thread", self._stop_metadata_thread),
+            ("_stop_subwave_thread", self._stop_subwave_thread),
+            ("_stop_subwave_request_threads", self._stop_subwave_request_threads),
+            ("_stop_update_check_thread", self._stop_update_check_thread),
+            ("_stop_lookup_thread", self._stop_lookup_thread),
+            ("_stop_artist_image_thread", self._stop_artist_image_thread),
+            ("_stop_album_art_thread", self._stop_album_art_thread),
+            ("_stop_similar_tracks_thread", self._stop_similar_tracks_thread),
+        ):
+            _shutdown_log.debug("quit_app: %s() starting", step_name)
+            step()
+            _shutdown_log.debug("quit_app: %s() returned", step_name)
+        _shutdown_log.debug("quit_app: player.stop() starting")
         self.player.stop()
+        _shutdown_log.debug("quit_app: player.stop() returned")
+        _shutdown_log.debug("quit_app: sleep_inhibitor.release() starting")
         self._sleep_inhibitor.release()
+        _shutdown_log.debug("quit_app: sleep_inhibitor.release() returned")
         if self.stream_proxy is not None:
+            _shutdown_log.debug("quit_app: stream_proxy.abort_active() starting")
             self.stream_proxy.abort_active()
+            _shutdown_log.debug("quit_app: stream_proxy.shutdown() starting")
             self.stream_proxy.shutdown()
+            _shutdown_log.debug("quit_app: stream_proxy.shutdown() returned")
         # Safety net: if anything still prevents a clean shutdown, force
         # the process to actually exit after a short grace period rather
         # than leaving it hanging invisibly in the background. Marked as
@@ -1332,11 +1347,17 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         watchdog = threading.Timer(3.0, lambda: os._exit(0))
         watchdog.daemon = True
         watchdog.start()
+        _shutdown_log.debug("quit_app: watchdog armed, calling QApplication.quit()")
         QApplication.quit()
+        _shutdown_log.debug("quit_app: QApplication.quit() returned")
 
     def closeEvent(self, event):
-        if self._quitting or not self.tray.isVisible():
+        _shutdown_log.debug("closeEvent: entered, _quitting=%s", self._quitting)
+        tray_visible = self.tray.isVisible()
+        _shutdown_log.debug("closeEvent: tray.isVisible() -> %s", tray_visible)
+        if self._quitting or not tray_visible:
             event.accept()
+            _shutdown_log.debug("closeEvent: accepted without dialog")
             return
 
         msg = QMessageBox(self)
@@ -1346,8 +1367,10 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         tray_btn = msg.addButton("Minimize to Tray", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton(QMessageBox.StandardButton.Cancel)
         msg.setDefaultButton(tray_btn)
+        _shutdown_log.debug("closeEvent: about to msg.exec()")
         msg.exec()
         clicked = msg.clickedButton()
+        _shutdown_log.debug("closeEvent: msg.exec() returned, clicked=%s", clicked.text() if clicked else None)
 
         if clicked is quit_btn:
             event.accept()
@@ -1365,8 +1388,32 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             event.ignore()  # Cancel - leave the window open
 
 
+def _install_shutdown_debug_log():
+    """Always-on file log (independent of RADIOTOP_LOG) tracing the
+    close/quit sequence step by step, truncated fresh on every launch.
+    Exists purely to diagnose reports of the app becoming unresponsive on
+    window close: since that hang can leave the process stuck before ever
+    reaching a place that could print to a console the user may not even
+    have open, the trace needs to already be on disk, not something
+    switched on after the fact."""
+    config_dir = os.path.join(os.path.expanduser("~"), ".config", APP_ORG)
+    os.makedirs(config_dir, exist_ok=True)
+    handler = logging.FileHandler(os.path.join(config_dir, "shutdown-debug.log"), mode="w")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    handler.setLevel(logging.DEBUG)
+    shutdown_logger = logging.getLogger("radiotop.shutdown")
+    shutdown_logger.setLevel(logging.DEBUG)
+    shutdown_logger.addHandler(handler)
+    shutdown_logger.propagate = False
+    return shutdown_logger
+
+
+_shutdown_log = logging.getLogger("radiotop.shutdown")
+
+
 def main():
     logging.basicConfig(level=os.environ.get("RADIOTOP_LOG", "WARNING"))
+    _install_shutdown_debug_log()
     app = QApplication(sys.argv)
     app.setDesktopFileName("radiotop")
     app.setApplicationName(APP_NAME)
