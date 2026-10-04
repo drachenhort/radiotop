@@ -2,6 +2,14 @@
 
 All notable changes to RadioTop are documented in this file.
 
+## [0.51] - 2026-10-04
+
+- Fixed: a station that failed to play only showed "Error" with no explanation. The status line now
+  says why, e.g. "Error: Station server returned HTTP 404 (Not Found)", "Station host not found",
+  "Station refused the connection" or "Station did not respond (timed out)".
+- Changed: each close/quit step is now logged to `shutdown-debug.log` in RadioTop's config folder
+  (overwritten on every launch) to help diagnose reports of the window hanging on close.
+
 ## [0.50] - 2026-09-02
 
 - Added: opt-out checkbox for the auto-filled port (7700) and `stream.mp3` filename when adding or
