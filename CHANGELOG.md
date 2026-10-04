@@ -2,7 +2,7 @@
 
 All notable changes to RadioTop are documented in this file.
 
-## [Unreleased]
+## [0.52] - 2026-10-04
 
 - Removed: the `shutdown-debug.log` close/quit trace added in 0.51; RadioTop no longer writes it.
 
