@@ -11,8 +11,11 @@ import json
 import logging
 import os
 import signal
+import socket
+import ssl
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from urllib.parse import urlparse, urlunparse
 
@@ -98,6 +101,26 @@ def should_attempt_reconnect(auto_reconnect_enabled, has_current_station, attemp
     current budget (reset each time a station is picked - see
     MainWindow.play_index)."""
     return auto_reconnect_enabled and has_current_station and attempts_remaining > 0
+
+
+def describe_stream_error(exc):
+    """Plain-language reason a station connection failed, for the "Error"
+    status shown to the user. The stream proxy records this per station URL
+    because QMediaPlayer only ever sees the proxy's local connection, so
+    its own error string can't say what actually went wrong upstream."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"Station server returned HTTP {exc.code} ({exc.reason})"
+    if isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, BaseException):
+        exc = exc.reason
+    if isinstance(exc, TimeoutError):
+        return "Station did not respond (timed out)"
+    if isinstance(exc, ssl.SSLError):
+        return f"Secure connection failed ({getattr(exc, 'reason', None) or exc})"
+    if isinstance(exc, socket.gaierror):
+        return f"Station host not found ({exc.strerror or exc})"
+    if isinstance(exc, ConnectionRefusedError):
+        return "Station refused the connection"
+    return f"Could not reach station ({exc})"
 
 
 def format_reconnect_message(attempt_number, max_attempts):

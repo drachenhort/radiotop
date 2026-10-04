@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from util import (
     _SleepInhibitor,
     _set_pdeathsig,
+    describe_stream_error,
     format_reconnect_message,
     select_output_device_index,
     should_attempt_reconnect,
@@ -191,3 +192,46 @@ def test_sleep_inhibitor_release_before_acquire_is_noop():
     with patch("util.sys.platform", "darwin"):
         inhibitor.release()  # must not raise, no process to terminate
     assert inhibitor._active is False
+
+
+# --------------------------------------------------------- describe_stream_error
+def test_describe_stream_error_http_error():
+    import urllib.error
+
+    exc = urllib.error.HTTPError("http://x", 404, "Not Found", {}, None)
+    assert describe_stream_error(exc) == "Station server returned HTTP 404 (Not Found)"
+
+
+def test_describe_stream_error_host_not_found():
+    import socket
+    import urllib.error
+
+    exc = urllib.error.URLError(socket.gaierror(-2, "Name or service not known"))
+    assert describe_stream_error(exc) == "Station host not found (Name or service not known)"
+
+
+def test_describe_stream_error_connection_refused():
+    import urllib.error
+
+    exc = urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+    assert describe_stream_error(exc) == "Station refused the connection"
+
+
+def test_describe_stream_error_timeout_bare_and_wrapped():
+    import urllib.error
+
+    assert describe_stream_error(TimeoutError("timed out")) == "Station did not respond (timed out)"
+    wrapped = urllib.error.URLError(TimeoutError("timed out"))
+    assert describe_stream_error(wrapped) == "Station did not respond (timed out)"
+
+
+def test_describe_stream_error_ssl():
+    import ssl
+    import urllib.error
+
+    exc = urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+    assert describe_stream_error(exc).startswith("Secure connection failed (")
+
+
+def test_describe_stream_error_other_falls_back_to_message():
+    assert describe_stream_error(OSError(113, "No route to host")) == "Could not reach station ([Errno 113] No route to host)"

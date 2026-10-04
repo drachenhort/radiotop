@@ -94,6 +94,8 @@ class MainWindowStub(QObject):
         self.stations = stations if stations is not None else []
         self.current_idx = None
         self._current_icy_name = None
+        self._playback_error = None
+        self.stream_proxy = None
         self._subwave_detected = False
         self._subwave_heartbeat_timer = None
         self._subwave_heartbeat_missed = 0

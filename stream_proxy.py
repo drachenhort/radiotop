@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 
 from threads import RADIOTOP_USER_AGENT, _cancellable_urlopen
+from util import describe_stream_error
 
 
 class _ActiveUpstream:
@@ -95,15 +96,20 @@ class _StreamProxyHandler(BaseHTTPRequestHandler):
             try:
                 req = urllib.request.Request(target, headers={"User-Agent": RADIOTOP_USER_AGENT})
                 upstream = _cancellable_urlopen(req, timeout=15, stop_event=conn._stop_event)
-            except Exception:
+            except Exception as exc:
+                # QMediaPlayer only sees this local 502, so keep the real
+                # upstream reason where MainWindow can show it to the user.
+                reason = describe_stream_error(exc)
+                self.server.last_errors[target] = reason
                 try:
-                    self.send_error(502, "Could not reach stream")
+                    self.send_error(502, reason)
                 except Exception:
                     pass
                 return
             if upstream is None:
                 return  # abort_active() fired while still connecting
 
+            self.server.last_errors.pop(target, None)
             conn.set_response(upstream)
             with upstream:
                 try:
@@ -134,12 +140,19 @@ class StreamProxyServer:
         self._httpd.daemon_threads = True
         self._httpd.active_connections = set()
         self._httpd.active_connections_lock = threading.Lock()
+        self._httpd.last_errors = {}
         self.port = self._httpd.server_address[1]
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
 
     def local_url(self, original_url):
         return f"http://127.0.0.1:{self.port}/stream?url={quote(original_url, safe='')}"
+
+    def last_error(self, original_url):
+        """Plain-language reason the most recent upstream connection to
+        original_url failed, or None if it last succeeded (or was never
+        tried)."""
+        return self._httpd.last_errors.get(original_url)
 
     def abort_active(self):
         """Interrupts any in-flight upstream fetch(es) this proxy is

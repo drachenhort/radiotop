@@ -173,6 +173,40 @@ def test_update_status_prefers_live_icy_name_over_stored_name(main_window_stub):
     assert main_window_stub.status_label.text_value == "Playing on - Actual Broadcast Name"
 
 
+def test_on_error_shows_proxy_upstream_reason(main_window_stub, monkeypatch):
+    stub = main_window_stub
+    stub.stations = [{"name": "Cool FM", "url": "http://a.example.com:7700/stream.mp3", "custom": True}]
+    stub.current_idx = 0
+    stub.auto_reconnect_enabled = False
+    stub.stream_proxy = SimpleNamespace(
+        last_error=lambda url: "Station server returned HTTP 404 (Not Found)"
+        if url == "http://a.example.com:7700/stream.mp3"
+        else None
+    )
+    _rig_for_update_status(stub, QMediaPlayer.PlaybackState.StoppedState, QMediaPlayer.MediaStatus.InvalidMedia)
+    stub._maybe_reconnect = lambda: None
+    rt.MainWindow._on_error(stub, QMediaPlayer.Error.ResourceError, "Server returned 5XX Server Error reply")
+    assert stub.status_label.text_value == "Error: Station server returned HTTP 404 (Not Found)"
+
+
+def test_on_error_falls_back_to_player_error_string(main_window_stub):
+    stub = main_window_stub
+    stub.current_idx = None
+    stub.stream_proxy = None
+    _rig_for_update_status(stub, QMediaPlayer.PlaybackState.StoppedState)
+    stub._maybe_reconnect = lambda: None
+    rt.MainWindow._on_error(stub, QMediaPlayer.Error.FormatError, "Unsupported <format>")
+    assert stub.status_label.text_value == "Error: Unsupported &lt;format&gt;"
+
+
+def test_update_status_keeps_error_reason_after_player_stops(main_window_stub):
+    stub = main_window_stub
+    stub._playback_error = "Station refused the connection"
+    _rig_for_update_status(stub, QMediaPlayer.PlaybackState.StoppedState)
+    rt.MainWindow._update_status(stub)
+    assert stub.status_label.text_value == "Error: Station refused the connection"
+
+
 # ------------------------------------------------------------ maybe reconnect
 def test_maybe_reconnect_schedules_when_conditions_met(main_window_stub, monkeypatch):
     stub = main_window_stub

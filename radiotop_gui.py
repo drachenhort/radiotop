@@ -175,6 +175,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self._current_subwave_track = None
         self._subwave_detected = False
         self._subwave_request_threads = []
+        # Why the current station last failed to play, shown as "Error: ..."
+        # in status_label until the next play/stop (see _on_error).
+        self._playback_error = None
         self._subwave_heartbeat_timer = QTimer(self)
         self._subwave_heartbeat_timer.setSingleShot(True)
         self._subwave_heartbeat_timer.timeout.connect(self._on_subwave_heartbeat_timeout)
@@ -265,6 +268,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         self.status_label = QLabel("Stopped")
         self.status_label.setTextFormat(Qt.TextFormat.RichText)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setWordWrap(True)  # "Error: <reason>" can be long
         status_font = QFont()
         status_font.setBold(True)
         self.status_label.setFont(status_font)
@@ -541,6 +545,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self._playback_generation += 1
             self._reconnect_attempts_remaining = self.reconnect_max_attempts
         self._current_icy_name = None
+        self._playback_error = None
         if self.stream_proxy is not None:
             self.stream_proxy.abort_active()
             play_url = self.stream_proxy.local_url(station["url"])
@@ -1049,6 +1054,7 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         if self.stream_proxy is not None:
             self.stream_proxy.abort_active()
         self.current_idx = None
+        self._playback_error = None
         self._playback_generation += 1  # invalidate any pending auto-reconnect retry
         self._stop_metadata_thread()
         self._stop_subwave_thread()
@@ -1086,7 +1092,9 @@ class MainWindow(EnrichmentMixin, QMainWindow):
         state = self.player.playbackState()
         media_status = self.player.mediaStatus()
 
-        if media_status == QMediaPlayer.MediaStatus.InvalidMedia:
+        if media_status == QMediaPlayer.MediaStatus.InvalidMedia or (
+            self._playback_error and state == QMediaPlayer.PlaybackState.StoppedState
+        ):
             status = "Error"
         elif state == QMediaPlayer.PlaybackState.PlayingState:
             if media_status in (
@@ -1103,6 +1111,8 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             status = "Stopped"
 
         text = status
+        if status == "Error" and self._playback_error:
+            text = f"Error: {html.escape(self._playback_error)}"
         if status == "Playing" and self.current_idx is not None:
             # Prefer the stream's own live icy-name over the stored station
             # name, which may be a name the user typed in and that
@@ -1136,9 +1146,14 @@ class MainWindow(EnrichmentMixin, QMainWindow):
             self._sleep_inhibitor.release()
 
     def _on_error(self, error, error_string):
-        self.status_label.setText("Error")
-        self.status_label.setStyleSheet(f"color: {STATUS_COLORS['Error']};")
-        self.statusBar().showMessage(error_string or "Playback error", 6000)
+        # Playback goes through the local stream proxy, so error_string
+        # usually only describes the proxy's generic 502 - prefer the real
+        # upstream reason the proxy recorded for this station.
+        upstream_reason = None
+        if self.stream_proxy is not None and self.current_idx is not None:
+            upstream_reason = self.stream_proxy.last_error(self.stations[self.current_idx]["url"])
+        self._playback_error = upstream_reason or error_string or "Playback error"
+        self._update_status()
         self._maybe_reconnect()
 
     def _maybe_reconnect(self):
